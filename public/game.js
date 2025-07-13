@@ -16,7 +16,7 @@ const config = {
     }
 };
 
-const TILE_SIZE = 40;
+const TILE_SIZE = 70;
 const GRID_WIDTH = 20;
 const GRID_HEIGHT = 15;
 const PLAYER_SPEED = 160;
@@ -83,6 +83,15 @@ function create() {
         left: 'A',
         right: 'D'
     });
+
+
+    // Camera (player in center of screen)
+    this.cameras.main.startFollow(player);
+    // Camera dont show otside the map
+    this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+
+    // world border
+    this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 }
 
 function update() {
