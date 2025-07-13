@@ -1,0 +1,35 @@
+{
+  "name": "blastmaze",
+  "version": "1.0.0",
+  "description": "Multiplayer top-down grid-based bomb game built with Node.js and Socket.IO.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sa6oZnaka/blastmaze.git"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "socket.io",
+    "nodejs",
+    "javascript"
+  ],
+  "author": "Sa6oZnaka",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/Sa6oZnaka/blastmaze/issues"
+  },
+  "homepage": "https://github.com/Sa6oZnaka/blastmaze#readme",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}

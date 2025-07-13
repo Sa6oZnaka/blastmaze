@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BlastMaze</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    socket.on('connect', () => {
+      console.log('🟢 Socket.IO: connected! ID:', socket.id);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('🔴 Socket.IO: disconnected!');
+    });
+  </script>
+</head>
+<body>
+  <h1>BlastMaze</h1>
+</body>
+</html>
