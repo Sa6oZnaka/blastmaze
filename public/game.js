@@ -103,24 +103,76 @@ function create() {
     this.cameras.main.startFollow(player);
     this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
     this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+
+    // LIGHTS
+    const darkness = this.add.graphics();
+    darkness.fillStyle(0x000000, 1);
+    darkness.fillRect(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+    this.darkness = darkness;
+
+    const canvasSizeX = GRID_WIDTH * TILE_SIZE;
+    const canvasSizeY = GRID_HEIGHT * TILE_SIZE;
+    const combinedMaskTex = this.textures.createCanvas('combinedMask', canvasSizeX, canvasSizeY);
+    this.combinedMaskCtx = combinedMaskTex.getContext();
+    combinedMaskTex.refresh();
+
+    const combinedMaskImage = this.make.image({
+        x: 0,
+        y: 0,
+        key: 'combinedMask',
+        add: false,
+        origin: 0
+    });
+
+    const mask = new Phaser.Display.Masks.BitmapMask(this, combinedMaskImage);
+    mask.invertAlpha = true;
+    darkness.setMask(mask);
+
+    this.lightOverlay = this.add.graphics();
+    this.lightOverlay.setBlendMode(Phaser.BlendModes.ADD);
+
+    this.lights = [
+      //  { x: 200, y: 200 },
+      //  { x: 400, y: 600 }
+    ];
+
 }
 
 function update() {
+    // Light
+    const ctx = this.combinedMaskCtx;
+    const radius = TILE_SIZE * 5;
+
+    ctx.clearRect(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+
+    this.lightOverlay.clear();
+
+    const drawLight = (x, y) => {
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+        gradient.addColorStop(0, 'rgb(255, 255, 255)');
+        gradient.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+
+        // Color overlay
+        //this.lightOverlay.fillStyle(0xffffff, 0.25); 
+        //this.lightOverlay.fillCircle(x, y, radius);
+    };
+
+    drawLight(player.x, player.y);
+
+    this.lights.forEach(light => drawLight(light.x, light.y));
+    this.textures.get('combinedMask').refresh();
+
+    // Movement
     if (moving) return;
 
-    if (heldLeft) {
-        if (tryMove(-1, 0)) return;
-    }
-    if (heldRight) {
-        if (tryMove(1, 0)) return;
-    }
-    if (heldUp) {
-        if (tryMove(0, -1)) return;
-    }
-    if (heldDown) {
-        if (tryMove(0, 1)) return;
-    }
+    if (heldLeft && tryMove(-1, 0)) return;
+    if (heldRight && tryMove(1, 0)) return;
+    if (heldUp && tryMove(0, -1)) return;
+    if (heldDown && tryMove(0, 1)) return;
 }
+
 
 function tryMove(dx, dy) {
     const newX = player.gridX + dx;
