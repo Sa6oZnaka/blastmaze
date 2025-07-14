@@ -17,31 +17,27 @@ const config = {
 };
 
 const TILE_SIZE = 90;
-const GRID_WIDTH = 20;
-const GRID_HEIGHT = 15;
+let GRID_WIDTH;
+let GRID_HEIGHT;
 const MOVE_DURATION = 150;
 
-const grid = [
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-  [0,1,1,0,0,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0],
-  [0,1,0,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0],
-  [0,0,0,0,1,0,1,0,1,1,0,0,1,0,1,0,0,0,0,0],
-  [0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0],
-  [0,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,0,0,0,0],
-  [0,0,0,0,0,1,0,1,1,1,1,0,0,0,1,0,0,1,0,0],
-  [0,1,0,1,0,0,0,1,0,0,0,0,1,1,0,0,0,0,0,0],
-  [0,0,0,1,0,0,0,0,0,1,1,0,0,0,0,1,0,0,0,0],
-  [0,0,0,0,0,1,1,1,0,0,0,0,1,0,0,0,1,1,0,0],
-  [0,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0],
-  [0,0,1,0,1,1,0,0,0,1,0,0,0,0,0,0,0,0,1,0],
-  [0,0,0,0,0,0,0,1,0,0,0,1,0,0,1,0,0,0,0,0],
-  [0,1,0,0,1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0],
-  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-];
+let grid;
+
+socket = io();
+socket.on('mapData', (mapData) => {
+
+    grid = mapData.grid;
+    GRID_WIDTH = mapData.width;
+    GRID_HEIGHT = mapData.height;
+
+    new Phaser.Game(config);
+});
 
 let player;
 let cursors;
 let walls;
+
+let mapGraphics;
 
 let moving = false;
 let moveTween = null;
@@ -55,22 +51,9 @@ function preload() {}
 
 function create() {
     walls = this.physics.add.staticGroup();
-
-    for (let y = 0; y < GRID_HEIGHT; y++) {
-        for (let x = 0; x < GRID_WIDTH; x++) {
-            const cell = grid[y][x];
-            const posX = x * TILE_SIZE + TILE_SIZE / 2;
-            const posY = y * TILE_SIZE + TILE_SIZE / 2;
-
-            if (cell === 1) {
-                const wall = this.add.rectangle(posX, posY, TILE_SIZE - 2, TILE_SIZE - 2, 0x0044ff);
-                this.physics.add.existing(wall, true);
-                walls.add(wall);
-            } else {
-                this.add.rectangle(posX, posY, TILE_SIZE - 2, TILE_SIZE - 2, 0x444444);
-            }
-        }
-    }
+    mapGraphics = this.add.graphics();
+    mapGraphics.setDepth(-1); // да е зад всички обекти
+    mapGraphics.setScrollFactor(1);
 
     player = this.add.rectangle(0, 0, TILE_SIZE - 6, TILE_SIZE - 6, 0xbbbbbb);
     player.gridX = 0;
@@ -104,66 +87,11 @@ function create() {
     this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
     this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
-    // LIGHTS
-    const darkness = this.add.graphics();
-    darkness.fillStyle(0x000000, 1);
-    darkness.fillRect(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
-    this.darkness = darkness;
-
-    const canvasSizeX = GRID_WIDTH * TILE_SIZE;
-    const canvasSizeY = GRID_HEIGHT * TILE_SIZE;
-    const combinedMaskTex = this.textures.createCanvas('combinedMask', canvasSizeX, canvasSizeY);
-    this.combinedMaskCtx = combinedMaskTex.getContext();
-    combinedMaskTex.refresh();
-
-    const combinedMaskImage = this.make.image({
-        x: 0,
-        y: 0,
-        key: 'combinedMask',
-        add: false,
-        origin: 0
-    });
-
-    const mask = new Phaser.Display.Masks.BitmapMask(this, combinedMaskImage);
-    mask.invertAlpha = true;
-    darkness.setMask(mask);
-
-    this.lightOverlay = this.add.graphics();
-    this.lightOverlay.setBlendMode(Phaser.BlendModes.ADD);
-
-    this.lights = [
-      //  { x: 200, y: 200 },
-      //  { x: 400, y: 600 }
-    ];
+    drawVisibleTiles.call(this);
 
 }
 
 function update() {
-    // Light
-    const ctx = this.combinedMaskCtx;
-    const radius = TILE_SIZE * 5;
-
-    ctx.clearRect(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
-
-    this.lightOverlay.clear();
-
-    const drawLight = (x, y) => {
-        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-        gradient.addColorStop(0, 'rgb(255, 255, 255)');
-        gradient.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-
-        // Color overlay
-        //this.lightOverlay.fillStyle(0xffffff, 0.25); 
-        //this.lightOverlay.fillCircle(x, y, radius);
-    };
-
-    drawLight(player.x, player.y);
-
-    this.lights.forEach(light => drawLight(light.x, light.y));
-    this.textures.get('combinedMask').refresh();
-
     // Movement
     if (moving) return;
 
@@ -171,6 +99,27 @@ function update() {
     if (heldRight && tryMove(1, 0)) return;
     if (heldUp && tryMove(0, -1)) return;
     if (heldDown && tryMove(0, 1)) return;
+}
+
+function drawVisibleTiles() {
+    const radius = 10;
+    const startX = Math.max(0, player.gridX - radius);
+    const endX = Math.min(GRID_WIDTH, player.gridX + radius + 1);
+    const startY = Math.max(0, player.gridY - radius);
+    const endY = Math.min(GRID_HEIGHT, player.gridY + radius + 1);
+
+    mapGraphics.clear();
+
+    for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+            const cell = grid[y][x];
+            const posX = x * TILE_SIZE;
+            const posY = y * TILE_SIZE;
+
+            mapGraphics.fillStyle(cell === 1 ? 0x0044ff : 0x444444, 1);
+            mapGraphics.fillRect(posX, posY, TILE_SIZE - 2, TILE_SIZE - 2);
+        }
+    }
 }
 
 
@@ -191,6 +140,7 @@ function tryMove(dx, dy) {
                 player.gridX = newX;
                 player.gridY = newY;
                 moving = false;
+                drawVisibleTiles.call(player.scene); // 👈 тук
             }
         });
 
@@ -203,4 +153,4 @@ function isInsideGrid(x, y) {
     return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
 }
 
-new Phaser.Game(config);
+
