@@ -47,7 +47,23 @@ let heldRight = false;
 let heldUp = false;
 let heldDown = false;
 
-function preload() {}
+function preload() {
+    // Light gradeint
+
+    const size = TILE_SIZE * 7;
+    const rt = this.textures.createCanvas('lightGradient', size, size);
+    const ctx = rt.getContext();
+
+    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    rt.refresh();
+}
+
 
 function create() {
     walls = this.physics.add.staticGroup();
@@ -89,9 +105,39 @@ function create() {
 
     drawVisibleTiles.call(this);
 
+    // Light
+    this.darkness = this.make.renderTexture({
+        width: this.cameras.main.width * 2,
+        height: this.cameras.main.height * 2,
+        add: true
+    });
+    this.darkness.setDepth(10);
+    this.darkness.setScrollFactor(0);
+
+    this.fpsText = this.add.text(10, 10, '', {
+        font: '16px Arial',
+        fill: '#ffffff'
+    })
+    .setScrollFactor(0)
+    .setDepth(100);
 }
 
 function update() {
+    // Light
+    this.darkness.clear();
+    this.darkness.fill(0x000000, 1);
+
+    const camView = this.cameras.main.worldView;
+    const playerCamX = player.x - camView.x + this.cameras.main.width;
+    const playerCamY = player.y - camView.y + this.cameras.main.height;
+
+    const light = this.add.image(playerCamX, playerCamY, 'lightGradient').setScale(2).setAlpha(1);
+    this.darkness.erase(light);
+    light.destroy();
+
+    const fps = Math.floor(this.game.loop.actualFps);
+    this.fpsText.setText(`FPS: ${fps}`);
+
     // Movement
     if (moving) return;
 
@@ -140,7 +186,7 @@ function tryMove(dx, dy) {
                 player.gridX = newX;
                 player.gridY = newY;
                 moving = false;
-                drawVisibleTiles.call(player.scene); // 👈 тук
+                drawVisibleTiles.call(player.scene);
             }
         });
 

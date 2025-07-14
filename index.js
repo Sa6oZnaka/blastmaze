@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+const grid = generateRandomMap(81, 50);
 
 function generateRandomMap(rows = 81, cols = 50) {
   const grid = [];
@@ -24,13 +25,11 @@ function generateRandomMap(rows = 81, cols = 50) {
   return grid;
 }
 
-
 app.use(express.static('public'));
 
 io.on('connection', (socket) => {
   console.log(`New connection: ${socket.id}`);
 
-  const grid = generateRandomMap(65, 90); // rows, cols
   const mapData = {
     grid,
     width: grid[0].length,
