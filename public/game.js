@@ -117,8 +117,6 @@ function create() {
     this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
     this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
-    drawVisibleTiles.call(this);
-
     // Light
     this.darkness = this.make.renderTexture({
         width: this.cameras.main.width * 2,
@@ -149,10 +147,31 @@ function create() {
     this.ray = this.raycaster.createRay({ origin: this.player, autoSlice: true });
 
     this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
+
+    updateVisibleBlocks(this);
 }
 
 function update() {
+    // FPS
+    const fps = Math.floor(this.game.loop.actualFps);
+    this.fpsText.setText(`FPS: ${fps}`);
+
+    // Update the raycaster
+    updateRaycaster.call(this);
+
     // Light gradeint
+    updateLightGradient.call(this);
+
+    // Movement
+    if (moving) return;
+
+    if (heldLeft && tryMove(-1, 0)) return;
+    if (heldRight && tryMove(1, 0)) return;
+    if (heldUp && tryMove(0, -1)) return;
+    if (heldDown && tryMove(0, 1)) return;
+}
+
+function updateLightGradient() {
     this.darkness.clear();
     this.darkness.fill(0x000000, 1);
 
@@ -163,20 +182,6 @@ function update() {
     const light = this.add.image(playerCamX, playerCamY, 'lightGradient').setScale(2).setAlpha(1);
     this.darkness.erase(light);
     light.destroy();
-
-    const fps = Math.floor(this.game.loop.actualFps);
-    this.fpsText.setText(`FPS: ${fps}`);
-
-    // Update the raycaster
-    updateRaycaster.call(this);
-
-    // Movement
-    if (moving) return;
-
-    if (heldLeft && tryMove(-1, 0)) return;
-    if (heldRight && tryMove(1, 0)) return;
-    if (heldUp && tryMove(0, -1)) return;
-    if (heldDown && tryMove(0, 1)) return;
 }
 
 function updateVisibleBlocks() {
@@ -221,21 +226,7 @@ function updateVisibleBlocks() {
 }
 
 function updateRaycaster() {
-    const cam = this.cameras.main;
-    const gridSize = TILE_SIZE;
-    const buffer = 10; // buffer zone
-
-    const left = Math.floor(cam.worldView.x / gridSize) - buffer;
-    const right = Math.ceil((cam.worldView.x + cam.width) / gridSize) + buffer;
-    const top = Math.floor(cam.worldView.y / gridSize) - buffer;
-    const bottom = Math.ceil((cam.worldView.y + cam.height) / gridSize) + buffer;
-
-    const offset = 60; // debug for bounds
-    const x = left * gridSize;
-    const y = top * gridSize;
-    const width = (right - left) * gridSize;
-    const height = (bottom - top) * gridSize;
-
+    
     this.raycaster.mapGameObjects(visibleBlocks.getChildren(), true);
     this.ray.setOrigin(player.x, player.y);
     const intersections = this.ray.castCircle();
@@ -245,35 +236,16 @@ function updateRaycaster() {
       this.lightGraphics.fillPoints(intersections, true);
     }
 
-    this.raycaster.setBoundingBox(x + offset, y + offset, width - offset * 2, height - offset * 2);
+    const cam = this.cameras.main;
+    const buffer = 50; // buffer zone
+    
+    const fromX = cam.scrollX - buffer;
+    const fromY = cam.scrollY - buffer;
+    const toX = cam.width + buffer * 2;
+    const toY = cam.height + buffer * 2;
 
-    // console.log(x, y, width, height); // debug raycaster visible cam
+    this.raycaster.setBoundingBox(fromX , fromY, toX, toY);
 }
-
-
-function drawVisibleTiles() {
-    const radius = 10;
-    const startX = Math.max(0, player.gridX - radius);
-    const endX = Math.min(GRID_WIDTH, player.gridX + radius + 1);
-    const startY = Math.max(0, player.gridY - radius);
-    const endY = Math.min(GRID_HEIGHT, player.gridY + radius + 1);
-
-    mapGraphics.clear();
-
-    for (let y = startY; y < endY; y++) {
-        for (let x = startX; x < endX; x++) {
-            const cell = grid[y][x];
-            const posX = x * TILE_SIZE;
-            const posY = y * TILE_SIZE;
-
-            mapGraphics.fillStyle(cell === 1 ? 0x0044ff : 0x444444, 1);
-            mapGraphics.fillRect(posX, posY, TILE_SIZE - 2, TILE_SIZE - 2);
-        }
-    }
-
-    updateVisibleBlocks.call(this);
-}
-
 
 function tryMove(dx, dy) {
     const newX = player.gridX + dx;
@@ -292,7 +264,7 @@ function tryMove(dx, dy) {
                 player.gridX = newX;
                 player.gridY = newY;
                 moving = false;
-                drawVisibleTiles.call(player.scene);
+                updateVisibleBlocks.call(player.scene);
             }
         });
 
@@ -304,5 +276,3 @@ function tryMove(dx, dy) {
 function isInsideGrid(x, y) {
     return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
 }
-
-
