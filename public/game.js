@@ -45,6 +45,7 @@ socket.on('mapData', (mapData) => {
 let player;
 let cursors;
 let walls;
+let bombs;
 
 let mapGraphics;
 
@@ -113,6 +114,11 @@ function create() {
     this.input.keyboard.on('keydown-S', () => { heldDown = true; });
     this.input.keyboard.on('keyup-S', () => { heldDown = false; });
 
+    bombs = this.add.group();
+    this.input.keyboard.on('keydown-SPACE', () => {
+        placeBomb.call(this);
+    });
+
     this.cameras.main.startFollow(player);
     this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
     this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
@@ -147,6 +153,7 @@ function create() {
     this.ray = this.raycaster.createRay({ origin: this.player, autoSlice: true });
 
     this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
+    createLightGradientTexture(this);
 
     updateVisibleBlocks(this);
 }
@@ -276,3 +283,83 @@ function tryMove(dx, dy) {
 function isInsideGrid(x, y) {
     return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
 }
+
+function placeBomb() {
+    const bombX = player.gridX * TILE_SIZE + TILE_SIZE / 2;
+    const bombY = player.gridY * TILE_SIZE + TILE_SIZE / 2;
+
+    const bomb = this.add.circle(bombX, bombY, 20, 0xff0000);
+    bomb.setDepth(1);
+
+    bombs.add(bomb);
+
+    // This should be on the sever
+    this.time.delayedCall(3000, () => {
+        explodeBomb(bomb);
+    });
+}
+
+function explodeBomb(bomb) {
+    // it should be called by server
+
+    const scene = bomb.scene;
+
+    const explosion = scene.add.image(bomb.x, bomb.y, 'explosionGradient');
+    explosion.setDepth(110);
+    explosion.setScale(10);
+    explosion.setAlpha(1);
+
+    // animation
+    scene.tweens.add({
+        targets: explosion,
+        scaleX: 1,
+        scaleY: 1,
+        alpha: 0,
+        duration: 500,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+            explosion.destroy();
+        }
+    });
+
+    // Премахваме стените в радиус от 1 клетка около бомбата
+    const bombGridX = Math.floor(bomb.x / TILE_SIZE);
+    const bombGridY = Math.floor(bomb.y / TILE_SIZE);
+
+    for (let y = bombGridY - 1; y <= bombGridY + 1; y++) {
+        for (let x = bombGridX - 1; x <= bombGridX + 1; x++) {
+            if (isInsideGrid(x, y) && grid[y][x] === 1) {
+                grid[y][x] = 0;
+
+                const key = `${x}_${y}`;
+                if (blocksMap[key]) {
+                    scene.raycaster.removeMappedObjects(blocksMap[key]);
+                    blocksMap[key].destroy();
+                    delete blocksMap[key];
+                }
+            }
+        }
+    }
+
+    bomb.destroy();
+}
+
+function createLightGradientTexture(scene) {
+    const size = 160;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    const center = size / 2;
+    const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+    gradient.addColorStop(0, 'rgba(255, 170, 0, 0.8)');
+    gradient.addColorStop(0.5, 'rgba(255, 170, 0, 0.4)');
+    gradient.addColorStop(1, 'rgba(255, 170, 0, 0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    scene.textures.addBase64('explosionGradient', canvas.toDataURL());
+}
+
