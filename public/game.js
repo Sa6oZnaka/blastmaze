@@ -386,6 +386,14 @@ socket.on('bombExploded', ({ x, y }) => {
 
     const scene = player.scene;
 
+    bombs.getChildren().forEach(bomb => {
+        const bx = Math.floor((bomb.x - TILE_SIZE / 2) / TILE_SIZE);
+        const by = Math.floor((bomb.y - TILE_SIZE / 2) / TILE_SIZE);
+        if (bx === x && by === y) {
+            bomb.destroy();
+        }
+    });
+
     const explosion = scene.add.image(
         bombGridX * TILE_SIZE + TILE_SIZE / 2,
         bombGridY * TILE_SIZE + TILE_SIZE / 2,
