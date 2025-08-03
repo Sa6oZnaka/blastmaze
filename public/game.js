@@ -31,8 +31,15 @@ let GRID_HEIGHT;
 const MOVE_DURATION = 150;
 
 let grid;
+let player;
+let players = {};
+let cursors;
+let walls;
+let bombs;
+
 
 socket = io();
+// map
 socket.on('mapData', (mapData) => {
 
     grid = mapData.grid;
@@ -42,10 +49,30 @@ socket.on('mapData', (mapData) => {
     new Phaser.Game(config);
 });
 
-let player;
-let cursors;
-let walls;
-let bombs;
+// players data
+socket.on('currentPlayers', (serverPlayers) => {
+
+    console.log(serverPlayers);
+
+    for (const id in serverPlayers) {
+        if (id !== socket.id) {
+            addOtherPlayer(serverPlayers[id]);
+        }
+    }
+});
+
+socket.on('playerJoined', (data) => {
+    if (data.id !== socket.id) {
+        addOtherPlayer(data);
+    }
+});
+
+socket.on('playerLeft', ({ id }) => {
+    if (players[id]) {
+        players[id].destroy();
+        delete players[id];
+    }
+});
 
 let mapGraphics;
 
@@ -261,6 +288,8 @@ function tryMove(dx, dy) {
     if (isInsideGrid(newX, newY) && grid[newY][newX] === 0) {
         moving = true;
 
+        socket.emit('move', { dx, dy });
+
         moveTween = player.scene.tweens.add({
             targets: player,
             x: newX * TILE_SIZE + TILE_SIZE / 2,
@@ -280,11 +309,32 @@ function tryMove(dx, dy) {
     return false;
 }
 
+socket.on('playerMoved', ({ id, x, y }) => {
+    if (id === socket.id) return;
+    const other = players[id];
+    if (!other) return;
+
+    const worldX = x * TILE_SIZE + TILE_SIZE / 2;
+    const worldY = y * TILE_SIZE + TILE_SIZE / 2;
+
+    player.scene.tweens.add({
+        targets: other,
+        x: worldX,
+        y: worldY,
+        duration: MOVE_DURATION,
+        ease: 'Linear'
+    });
+});
+
+
 function isInsideGrid(x, y) {
     return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
 }
 
 function placeBomb() {
+    socket.emit('placeBomb');
+
+/*
     const bombX = player.gridX * TILE_SIZE + TILE_SIZE / 2;
     const bombY = player.gridY * TILE_SIZE + TILE_SIZE / 2;
 
@@ -296,20 +346,35 @@ function placeBomb() {
     // This should be on the sever
     this.time.delayedCall(3000, () => {
         explodeBomb(bomb);
-    });
+    });*/
 }
 
-function explodeBomb(bomb) {
-    // it should be called by server
+socket.on('bombPlaced', ({ id, x, y }) => {
+    const bomb = player.scene.add.circle(
+        x * TILE_SIZE + TILE_SIZE / 2,
+        y * TILE_SIZE + TILE_SIZE / 2,
+        20,
+        0xff0000
+    );
+    bombs.add(bomb);
+    bomb.setDepth(1);
+});
 
-    const scene = bomb.scene;
+socket.on('bombExploded', ({ x, y }) => {
+    const bombGridX = x;
+    const bombGridY = y;
 
-    const explosion = scene.add.image(bomb.x, bomb.y, 'explosionGradient');
+    const scene = player.scene;
+
+    const explosion = scene.add.image(
+        bombGridX * TILE_SIZE + TILE_SIZE / 2,
+        bombGridY * TILE_SIZE + TILE_SIZE / 2,
+        'explosionGradient'
+    );
     explosion.setDepth(110);
     explosion.setScale(10);
     explosion.setAlpha(1);
 
-    // animation
     scene.tweens.add({
         targets: explosion,
         scaleX: 1,
@@ -322,16 +387,12 @@ function explodeBomb(bomb) {
         }
     });
 
-    // Премахваме стените в радиус от 1 клетка около бомбата
-    const bombGridX = Math.floor(bomb.x / TILE_SIZE);
-    const bombGridY = Math.floor(bomb.y / TILE_SIZE);
+    for (let y2 = bombGridY - 1; y2 <= bombGridY + 1; y2++) {
+        for (let x2 = bombGridX - 1; x2 <= bombGridX + 1; x2++) {
+            if (isInsideGrid(x2, y2) && grid[y2][x2] === 1) {
+                grid[y2][x2] = 0;
 
-    for (let y = bombGridY - 1; y <= bombGridY + 1; y++) {
-        for (let x = bombGridX - 1; x <= bombGridX + 1; x++) {
-            if (isInsideGrid(x, y) && grid[y][x] === 1) {
-                grid[y][x] = 0;
-
-                const key = `${x}_${y}`;
+                const key = `${x2}_${y2}`;
                 if (blocksMap[key]) {
                     scene.raycaster.removeMappedObjects(blocksMap[key]);
                     blocksMap[key].destroy();
@@ -340,9 +401,7 @@ function explodeBomb(bomb) {
             }
         }
     }
-
-    bomb.destroy();
-}
+});
 
 function createLightGradientTexture(scene) {
     const size = 160;
@@ -363,3 +422,13 @@ function createLightGradientTexture(scene) {
     scene.textures.addBase64('explosionGradient', canvas.toDataURL());
 }
 
+function addOtherPlayer(data) {
+    const other = player.scene.add.rectangle(
+        data.x * TILE_SIZE + TILE_SIZE / 2,
+        data.y * TILE_SIZE + TILE_SIZE / 2,
+        TILE_SIZE - 6,
+        TILE_SIZE - 6,
+        0x44ff44
+    );
+    players[data.id] = other;
+}
