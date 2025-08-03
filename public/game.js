@@ -25,6 +25,9 @@ const config = {
   }
 };
 
+let eventQueue = [];
+let sceneCreated = false;
+
 const TILE_SIZE = 90;
 let GRID_WIDTH;
 let GRID_HEIGHT;
@@ -51,19 +54,29 @@ socket.on('mapData', (mapData) => {
 
 // players data
 socket.on('currentPlayers', (serverPlayers) => {
-
-    console.log(serverPlayers);
-
-    for (const id in serverPlayers) {
-        if (id !== socket.id) {
-            addOtherPlayer(serverPlayers[id]);
+    const handlePlayers = () => {
+        for (const id in serverPlayers) {
+            if (id !== socket.id) {
+                addOtherPlayer(serverPlayers[id]);
+            }
         }
+    };
+
+    if (sceneCreated) {
+        handlePlayers();
+    } else {
+        eventQueue.push(handlePlayers);
     }
 });
 
 socket.on('playerJoined', (data) => {
     if (data.id !== socket.id) {
-        addOtherPlayer(data);
+        const handleJoin = () => addOtherPlayer(data);
+        if (sceneCreated) {
+            handleJoin();
+        } else {
+            eventQueue.push(handleJoin);
+        }
     }
 });
 
@@ -183,6 +196,13 @@ function create() {
     createLightGradientTexture(this);
 
     updateVisibleBlocks(this);
+
+    // Socket events after scene is created
+    sceneCreated = true;
+    for (const evt of eventQueue) {
+        evt();
+    }
+    eventQueue = [];
 }
 
 function update() {
