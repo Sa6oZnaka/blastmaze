@@ -7,6 +7,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 const grid = generateRandomMap(81, 50);
 const players = {};
+const bombs = [];
 
 function generateRandomMap(rows = 81, cols = 50) {
     const grid = [];
@@ -68,15 +69,21 @@ io.on('connection', (socket) => {
         const bombX = player.x;
         const bombY = player.y;
 
+        bombs.push({
+            bombX,
+            bombY,
+            timer: setTimeout(() => explodeBomb(bombX, bombY), 3000)
+        });
+
         io.emit('bombPlaced', {
             id: socket.id,
             x: bombX,
             y: bombY
         });
 
-        setTimeout(() => {
+        /*setTimeout(() => {
             io.emit('bombExploded', { x: bombX, y: bombY });
-        }, 3000);
+        }, 3000);*/
     });
 
     socket.on('disconnect', () => {
@@ -85,6 +92,33 @@ io.on('connection', (socket) => {
         io.emit('playerLeft', { id: socket.id });
     });
 });
+
+function explodeBomb(bombX, bombY) {
+    // remove bomb
+    const index = bombs.findIndex(b => b.bombX === bombX && b.bombY === bombY);
+    if (index !== -1) bombs.splice(index, 1);
+
+    // radius 1
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            const nx = bombX + dx;
+            const ny = bombY + dy;
+            if (ny >= 0 && ny < grid.length && nx >= 0 && nx < grid[0].length) {
+                grid[ny][nx] = 0;
+            }
+        }
+    }
+
+    io.emit('bombExploded', { x: bombX, y: bombY, grid });
+
+    // exploade near bombs
+    bombs.forEach(bomb => {
+        if (Math.abs(bomb.bombX - bombX) <= 1 && Math.abs(bomb.bombY - bombY) <= 1) {
+            clearTimeout(bomb.timer);
+            explodeBomb(bomb.bombX, bomb.bombY);
+        }
+    });
+}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
