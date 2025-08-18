@@ -93,6 +93,22 @@ io.on('connection', (socket) => {
     });
 });
 
+function checkPlayersInExplosion(affected) {
+    for (const playerId in players) {
+        
+        const player = players[playerId];
+
+        if (affected.has(`${player.x},${player.y}`)) {
+            console.log(`Sending playerDied to socket: ${playerId}`);
+            io.to(playerId).emit('playerDied');
+
+            io.emit('playerLeft', { id: playerId });
+            delete players[playerId];
+        }
+    }
+}
+
+
 function explodeBomb(bombX, bombY) {
     const affected = collectExplosion(bombX, bombY);
 
@@ -102,6 +118,8 @@ function explodeBomb(bombX, bombY) {
     });
 
     io.emit('bombExploded', { x: bombX, y: bombY, affected: affectedArr });
+
+    checkPlayersInExplosion(affected);
 }
 
 function collectExplosion(bombX, bombY, affected = new Set()) {

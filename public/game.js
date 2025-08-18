@@ -81,6 +81,42 @@ socket.on('playerJoined', (data) => {
 });
 
 socket.on('playerLeft', ({ id }) => {
+    console.log("Player " + id + " died!");
+
+    if (players[id]) {
+        players[id].destroy();
+        delete players[id];
+    }
+});
+
+socket.on('playerDied', () => console.log('Received playerDied'));
+/*
+
+socket.on('playerDied', () => {
+    // Ако сме ние
+
+    console.log("Died!!!");
+    const scene = player.scene;
+
+    const deadText = scene.add.text(
+        scene.cameras.main.worldView.x + scene.cameras.main.width / 2,
+        scene.cameras.main.worldView.y + scene.cameras.main.height / 2,
+        'DEAD',
+        {
+            font: '64px Arial',
+            fill: '#ff0000',
+            stroke: '#000',
+            strokeThickness: 6
+        }
+    );
+    deadText.setOrigin(0.5);
+    deadText.setDepth(200);
+
+    moving = true;
+    heldLeft = heldRight = heldUp = heldDown = heldSpace = false;
+});
+*/
+socket.on('playerLeft', ({ id }) => {
     if (players[id]) {
         players[id].destroy();
         delete players[id];
