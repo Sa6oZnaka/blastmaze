@@ -388,12 +388,6 @@ socket.on('bombPlaced', ({ id, x, y }) => {
 });
 
 socket.on('bombExploded', ({ x, y, affected }) => {
-
-    console.log(x, y, affected);
-
-    const bombGridX = x;
-    const bombGridY = y;
-
     const scene = player.scene;
 
     bombs.getChildren().forEach(bomb => {
@@ -404,28 +398,27 @@ socket.on('bombExploded', ({ x, y, affected }) => {
         }
     });
 
-    const explosion = scene.add.image(
-        bombGridX * TILE_SIZE + TILE_SIZE / 2,
-        bombGridY * TILE_SIZE + TILE_SIZE / 2,
-        'explosionGradient'
-    );
-    explosion.setDepth(110);
-    explosion.setScale(10);
-    explosion.setAlpha(1);
-
-    scene.tweens.add({
-        targets: explosion,
-        scaleX: 1,
-        scaleY: 1,
-        alpha: 0,
-        duration: 500,
-        ease: 'Cubic.easeOut',
-        onComplete: () => {
-            explosion.destroy();
-        }
-    });
-
     affected.forEach(({ x, y }) => {
+        const cx = x * TILE_SIZE + TILE_SIZE / 2;
+        const cy = y * TILE_SIZE + TILE_SIZE / 2;
+
+        const explosion = scene.add.image(cx, cy, 'explosionGradient');
+        explosion.setDepth(110);
+        explosion.setScale(0.5);
+        explosion.setAlpha(1);
+
+        scene.tweens.add({
+            targets: explosion,
+            scaleX: 1.5,
+            scaleY: 1.5,
+            alpha: 0,
+            duration: 500,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+                explosion.destroy();
+            }
+        });
+
         if (isInsideGrid(x, y) && grid[y][x] === 1) {
             grid[y][x] = 0;
 
@@ -436,10 +429,10 @@ socket.on('bombExploded', ({ x, y, affected }) => {
                 scene.tweens.add({
                     targets: block,
                     tint: 0xff5555,
-                    scaleX: 1.2,
-                    scaleY: 1.2,
+                    scaleX: 0.8,
+                    scaleY: 0.8,
                     alpha: 0,
-                    duration: 250,
+                    duration: 200,
                     ease: 'Cubic.easeIn',
                     onComplete: () => {
                         scene.raycaster.removeMappedObjects(block);

@@ -84,10 +84,6 @@ io.on('connection', (socket) => {
             x: bombX,
             y: bombY
         });
-
-        /*setTimeout(() => {
-            io.emit('bombExploded', { x: bombX, y: bombY });
-        }, 3000);*/
     });
 
     socket.on('disconnect', () => {
@@ -112,22 +108,37 @@ function collectExplosion(bombX, bombY, affected = new Set()) {
     const index = bombs.findIndex(b => b.bombX === bombX && b.bombY === bombY);
     if (index !== -1) bombs.splice(index, 1);
 
-    // radius 1
-    for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-            const nx = bombX + dx;
-            const ny = bombY + dy;
-            if (ny >= 0 && ny < grid.length && nx >= 0 && nx < grid[0].length) {
+    // center
+    affected.add(`${bombX},${bombY}`);
+    grid[bombY][bombX] = 0;
+
+    const directions = [
+        { dx: 1, dy: 0 },   // right
+        { dx: -1, dy: 0 },  // left
+        { dx: 0, dy: 1 },   // down
+        { dx: 0, dy: -1 }   // up
+    ];
+
+    const radius = 3;
+
+    for (const { dx, dy } of directions) {
+        for (let step = 1; step <= radius; step++) {
+            const nx = bombX + dx * step;
+            const ny = bombY + dy * step;
+
+            if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) break;
+
+            if (grid[ny][nx] === 1) { 
                 grid[ny][nx] = 0;
+                affected.add(`${nx},${ny}`);
+                break;
+            } else {
                 affected.add(`${nx},${ny}`);
             }
         }
     }
 
-    const neighbors = bombs.filter(
-        bomb => Math.abs(bomb.bombX - bombX) <= 1 && Math.abs(bomb.bombY - bombY) <= 1
-    );
-
+    const neighbors = bombs.filter(bomb => affected.has(`${bomb.bombX},${bomb.bombY}`));
     neighbors.forEach(bomb => {
         clearTimeout(bomb.timer);
         collectExplosion(bomb.bombX, bomb.bombY, affected);
