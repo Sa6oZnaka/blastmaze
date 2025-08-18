@@ -69,6 +69,10 @@ io.on('connection', (socket) => {
         const bombX = player.x;
         const bombY = player.y;
 
+        // check if there is bomb
+        const bombExists = bombs.some(b => b.bombX === bombX && b.bombY === bombY);
+        if (bombExists) return; 
+
         bombs.push({
             bombX,
             bombY,
@@ -94,7 +98,17 @@ io.on('connection', (socket) => {
 });
 
 function explodeBomb(bombX, bombY) {
-    // remove bomb
+    const affected = collectExplosion(bombX, bombY);
+
+    const affectedArr = Array.from(affected).map(str => {
+        const [x, y] = str.split(',').map(Number);
+        return { x, y };
+    });
+
+    io.emit('bombExploded', { x: bombX, y: bombY, affected: affectedArr });
+}
+
+function collectExplosion(bombX, bombY, affected = new Set()) {
     const index = bombs.findIndex(b => b.bombX === bombX && b.bombY === bombY);
     if (index !== -1) bombs.splice(index, 1);
 
@@ -105,19 +119,21 @@ function explodeBomb(bombX, bombY) {
             const ny = bombY + dy;
             if (ny >= 0 && ny < grid.length && nx >= 0 && nx < grid[0].length) {
                 grid[ny][nx] = 0;
+                affected.add(`${nx},${ny}`);
             }
         }
     }
 
-    io.emit('bombExploded', { x: bombX, y: bombY, grid });
+    const neighbors = bombs.filter(
+        bomb => Math.abs(bomb.bombX - bombX) <= 1 && Math.abs(bomb.bombY - bombY) <= 1
+    );
 
-    // exploade near bombs
-    bombs.forEach(bomb => {
-        if (Math.abs(bomb.bombX - bombX) <= 1 && Math.abs(bomb.bombY - bombY) <= 1) {
-            clearTimeout(bomb.timer);
-            explodeBomb(bomb.bombX, bomb.bombY);
-        }
+    neighbors.forEach(bomb => {
+        clearTimeout(bomb.timer);
+        collectExplosion(bomb.bombX, bomb.bombY, affected);
     });
+
+    return affected;
 }
 
 const PORT = process.env.PORT || 3000;

@@ -96,6 +96,7 @@ let heldLeft = false;
 let heldRight = false;
 let heldUp = false;
 let heldDown = false;
+let heldSpace = false;
 
 let visibleBlocks;
 let blocksMap = {}; 
@@ -154,10 +155,13 @@ function create() {
     this.input.keyboard.on('keydown-S', () => { heldDown = true; });
     this.input.keyboard.on('keyup-S', () => { heldDown = false; });
 
+    this.input.keyboard.on('keydown-SPACE', () => { heldSpace = true; });
+    this.input.keyboard.on('keyup-SPACE', () => { heldSpace = false; });
+
     bombs = this.add.group();
-    this.input.keyboard.on('keydown-SPACE', () => {
+    /*this.input.keyboard.on('keydown-SPACE', () => {
         placeBomb.call(this);
-    });
+    });*/
 
     this.cameras.main.startFollow(player);
     this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
@@ -218,6 +222,9 @@ function update() {
 
     // Movement
     if (moving) return;
+
+    if(heldSpace)
+        placeBomb.call(this);
 
     if (heldLeft && tryMove(-1, 0)) return;
     if (heldRight && tryMove(1, 0)) return;
@@ -380,7 +387,10 @@ socket.on('bombPlaced', ({ id, x, y }) => {
     bomb.setDepth(1);
 });
 
-socket.on('bombExploded', ({ x, y }) => {
+socket.on('bombExploded', ({ x, y, affected }) => {
+
+    console.log(x, y, affected);
+
     const bombGridX = x;
     const bombGridY = y;
 
@@ -415,20 +425,31 @@ socket.on('bombExploded', ({ x, y }) => {
         }
     });
 
-    for (let y2 = bombGridY - 1; y2 <= bombGridY + 1; y2++) {
-        for (let x2 = bombGridX - 1; x2 <= bombGridX + 1; x2++) {
-            if (isInsideGrid(x2, y2) && grid[y2][x2] === 1) {
-                grid[y2][x2] = 0;
+    affected.forEach(({ x, y }) => {
+        if (isInsideGrid(x, y) && grid[y][x] === 1) {
+            grid[y][x] = 0;
 
-                const key = `${x2}_${y2}`;
-                if (blocksMap[key]) {
-                    scene.raycaster.removeMappedObjects(blocksMap[key]);
-                    blocksMap[key].destroy();
-                    delete blocksMap[key];
-                }
+            const key = `${x}_${y}`;
+            const block = blocksMap[key];
+
+            if (block) {
+                scene.tweens.add({
+                    targets: block,
+                    tint: 0xff5555,
+                    scaleX: 1.2,
+                    scaleY: 1.2,
+                    alpha: 0,
+                    duration: 250,
+                    ease: 'Cubic.easeIn',
+                    onComplete: () => {
+                        scene.raycaster.removeMappedObjects(block);
+                        block.destroy();
+                        delete blocksMap[key];
+                    }
+                });
             }
         }
-    }
+    });
 });
 
 function createLightGradientTexture(scene) {
