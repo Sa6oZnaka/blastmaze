@@ -89,13 +89,7 @@ socket.on('playerLeft', ({ id }) => {
     }
 });
 
-socket.on('playerDied', () => console.log('Received playerDied'));
-/*
-
 socket.on('playerDied', () => {
-    // Ако сме ние
-
-    console.log("Died!!!");
     const scene = player.scene;
 
     const deadText = scene.add.text(
@@ -112,10 +106,9 @@ socket.on('playerDied', () => {
     deadText.setOrigin(0.5);
     deadText.setDepth(200);
 
-    moving = true;
-    heldLeft = heldRight = heldUp = heldDown = heldSpace = false;
+    canMove = false;
 });
-*/
+
 socket.on('playerLeft', ({ id }) => {
     if (players[id]) {
         players[id].destroy();
@@ -133,6 +126,8 @@ let heldRight = false;
 let heldUp = false;
 let heldDown = false;
 let heldSpace = false;
+
+let canMove = true;
 
 let visibleBlocks;
 let blocksMap = {}; 
@@ -257,6 +252,8 @@ function update() {
     updateLightGradient.call(this);
 
     // Movement
+    if(!canMove) return;
+
     if (moving) return;
 
     if(heldSpace)
@@ -396,20 +393,6 @@ function isInsideGrid(x, y) {
 
 function placeBomb() {
     socket.emit('placeBomb');
-
-/*
-    const bombX = player.gridX * TILE_SIZE + TILE_SIZE / 2;
-    const bombY = player.gridY * TILE_SIZE + TILE_SIZE / 2;
-
-    const bomb = this.add.circle(bombX, bombY, 20, 0xff0000);
-    bomb.setDepth(1);
-
-    bombs.add(bomb);
-
-    // This should be on the sever
-    this.time.delayedCall(3000, () => {
-        explodeBomb(bomb);
-    });*/
 }
 
 socket.on('bombPlaced', ({ id, x, y }) => {

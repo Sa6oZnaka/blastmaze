@@ -25,18 +25,6 @@
     </style>
 </head>
 <body>
-    <script>
-        console.log("Page loaded, scripts running.");
-
-        const socket = io();
-
-        socket.on('connect', () => {
-            console.log('🟢 Socket.IO: connected! ID:', socket.id);
-        });
-
-        socket.on('disconnect', () => {
-            console.log('🔴 Socket.IO: disconnected!');
-        });
-    </script>
+    
 </body>
 </html>
