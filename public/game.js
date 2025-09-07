@@ -409,13 +409,15 @@ socket.on('bombPlaced', ({ id, x, y }) => {
 socket.on('bombExploded', ({ x, y, affected }) => {
     const scene = player.scene;
 
-    bombs.getChildren().forEach(bomb => {
+    const children = [...bombs.getChildren()];
+    for (const bomb of children) {
         const bx = Math.floor((bomb.x - TILE_SIZE / 2) / TILE_SIZE);
         const by = Math.floor((bomb.y - TILE_SIZE / 2) / TILE_SIZE);
-        if (bx === x && by === y) {
-            bomb.destroy();
+
+        if (affected.some(cell => cell.x === bx && cell.y === by)) {
+            bombs.remove(bomb, true, true);
         }
-    });
+    }
 
     affected.forEach(({ x, y }) => {
         const cx = x * TILE_SIZE + TILE_SIZE / 2;
