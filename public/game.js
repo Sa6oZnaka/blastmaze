@@ -134,7 +134,8 @@ let blocksMap = {};
 
 function preload() {
 
-    this.load.image('block', 'https://labs.phaser.io/assets/sprites/block.png');
+    this.load.image('block', './assets/block.png');
+    this.load.image('block2', './assets/block2.png');
 
     // Light gradeint
     const size = TILE_SIZE * 7;
@@ -300,6 +301,19 @@ function updateVisibleBlocks() {
 
                 if (!blocksMap[key]) {
                     const block = visibleBlocks.create(x * TILE_SIZE, y * TILE_SIZE, 'block')
+                        .setOrigin(0)
+                        .setDisplaySize(TILE_SIZE, TILE_SIZE);
+                    block.refreshBody();
+                    blocksMap[key] = block;
+                }
+            }
+
+            if(grid[y][x] == 2){
+
+                const key = `${x}_${y}`;
+
+                if (!blocksMap[key]) {
+                    const block = visibleBlocks.create(x * TILE_SIZE, y * TILE_SIZE, 'block2')
                         .setOrigin(0)
                         .setDisplaySize(TILE_SIZE, TILE_SIZE);
                     block.refreshBody();

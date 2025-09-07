@@ -15,11 +15,19 @@ function generateRandomMap(rows = 81, cols = 50) {
     for (let y = 0; y < rows; y++) {
         const row = [];
         for (let x = 0; x < cols; x++) {
-        if ((y === 0 && x === 0) || (y === 0 && x === 1) || (y === 1 && x === 0)) {
-            row.push(0);
-        } else {
-            row.push(Math.random() < 0.8 ? 0 : 1);
-        }
+            if ((y === 0 && x === 0) || (y === 0 && x === 1) || (y === 1 && x === 0)) {
+                row.push(0);
+            } else {
+                const r = Math.random();
+
+                if(r < 0.05){
+                    row.push(2);
+                } else if (r < 0.2){
+                    row.push(1);
+                }else{
+                    row.push(0);
+                }
+            }
         }
         grid.push(row);
     }
@@ -150,8 +158,11 @@ function collectExplosion(bombX, bombY, affected = new Set()) {
                 grid[ny][nx] = 0;
                 affected.add(`${nx},${ny}`);
                 break;
-            } else {
+            } else if (grid[ny][nx] === 0) { 
                 affected.add(`${nx},${ny}`);
+            }else{
+                break;
+                // nothing the block is indesctructable
             }
         }
     }
