@@ -40,6 +40,7 @@ let cursors;
 let walls;
 let bombs;
 
+let bombPrevew = true;
 
 socket = io();
 // map
@@ -418,6 +419,26 @@ socket.on('bombPlaced', ({ id, x, y }) => {
     );
     bombs.add(bomb);
     bomb.setDepth(1);
+
+    if(bombPrevew){
+        const affected = previewExplosion(x, y);
+        affected.forEach(({ x: ax, y: ay }) => {
+            const cx = ax * TILE_SIZE;
+            const cy = ay * TILE_SIZE;
+            const previewTile = player.scene.add.rectangle(
+                cx + TILE_SIZE / 2,
+                cy + TILE_SIZE / 2,
+                TILE_SIZE,
+                TILE_SIZE,
+                0xffff00,
+                0.3
+            );
+            previewTile.setDepth(0);
+            
+            bomb.previewTiles = bomb.previewTiles || [];
+            bomb.previewTiles.push(previewTile);
+        });
+    }
 });
 
 socket.on('bombExploded', ({ x, y, affected }) => {
@@ -478,6 +499,20 @@ socket.on('bombExploded', ({ x, y, affected }) => {
             }
         }
     });
+
+    // remove prevew
+    for (const bomb of children) {
+        const bx = Math.floor((bomb.x - TILE_SIZE / 2) / TILE_SIZE);
+        const by = Math.floor((bomb.y - TILE_SIZE / 2) / TILE_SIZE);
+
+        if (affected.some(cell => cell.x === bx && cell.y === by)) {
+            if (bomb.previewTiles) {
+                bomb.previewTiles.forEach(tile => tile.destroy());
+                bomb.previewTiles = [];
+            }
+            bombs.remove(bomb, true, true);
+        }
+    }
 });
 
 function createLightGradientTexture(scene) {
@@ -509,3 +544,40 @@ function addOtherPlayer(data) {
     );
     players[data.id] = other;
 }
+
+function previewExplosion(x, y) {
+    const affected = new Set();
+    const directions = [
+        { dx: 1, dy: 0 },
+        { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: 0, dy: -1 }
+    ];
+    const radius = 3;
+
+    affected.add(`${x},${y}`);
+
+    for (const { dx, dy } of directions) {
+        for (let step = 1; step <= radius; step++) {
+            const nx = x + dx * step;
+            const ny = y + dy * step;
+
+            if (!isInsideGrid(nx, ny)) break;
+
+            if (grid[ny][nx] === 1) { // destructible block – спира
+                affected.add(`${nx},${ny}`);
+                break;
+            } else if (grid[ny][nx] === 0) { // празно
+                affected.add(`${nx},${ny}`);
+            } else {
+                break; // indestructible block
+            }
+        }
+    }
+
+    return [...affected].map(str => {
+        const [ax, ay] = str.split(',').map(Number);
+        return { x: ax, y: ay };
+    });
+}
+
