@@ -40,7 +40,7 @@ let cursors;
 let walls;
 let bombs;
 
-let bombPrevew = true;
+let bombPrevew = false;
 
 socket = io();
 // map
@@ -137,6 +137,12 @@ function preload() {
 
     this.load.image('block', './assets/block.png');
     this.load.image('block2', './assets/block2.png');
+        this.load.spritesheet('bomb', 'assets/bomb.png', {
+        frameWidth: TILE_SIZE, 
+        frameHeight: TILE_SIZE
+    });
+
+
 
     // Light gradeint
     const size = TILE_SIZE * 7;
@@ -411,14 +417,26 @@ function placeBomb() {
 }
 
 socket.on('bombPlaced', ({ id, x, y }) => {
-    const bomb = player.scene.add.circle(
+    const bomb = player.scene.add.sprite(
         x * TILE_SIZE + TILE_SIZE / 2,
         y * TILE_SIZE + TILE_SIZE / 2,
-        20,
-        0xff0000
+        'bomb',
+        0
     );
+
     bombs.add(bomb);
     bomb.setDepth(1);
+
+    bombs.add(bomb);
+    bomb.setDepth(1);
+
+    player.scene.time.delayedCall(500, () => {
+        bomb.setFrame(1);
+    });
+
+    player.scene.time.delayedCall(1100, () => {
+        bomb.setFrame(2);
+    });
 
     if(bombPrevew){
         const affected = previewExplosion(x, y);
