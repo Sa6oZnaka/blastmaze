@@ -430,12 +430,16 @@ socket.on('bombPlaced', ({ id, x, y }) => {
     bombs.add(bomb);
     bomb.setDepth(1);
 
-    player.scene.time.delayedCall(500, () => {
+    player.scene.time.delayedCall(600, () => {
         bomb.setFrame(1);
     });
 
-    player.scene.time.delayedCall(1100, () => {
+    player.scene.time.delayedCall(1200, () => {
         bomb.setFrame(2);
+    });
+
+    player.scene.time.delayedCall(1800, () => {
+        bomb.setFrame(3);
     });
 
     if(bombPrevew){
