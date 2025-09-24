@@ -28,7 +28,7 @@ const config = {
 let eventQueue = [];
 let sceneCreated = false;
 
-const TILE_SIZE = 90;
+const TILE_SIZE = 70;
 let GRID_WIDTH;
 let GRID_HEIGHT;
 const MOVE_DURATION = 150;
@@ -156,8 +156,8 @@ function preload() {
     this.load.image('block', './assets/block.png');
     this.load.image('block2', './assets/block2.png');
         this.load.spritesheet('bomb', 'assets/bomb.png', {
-        frameWidth: TILE_SIZE, 
-        frameHeight: TILE_SIZE
+        frameWidth: 90, 
+        frameHeight: 90
     });
 
 
@@ -442,8 +442,8 @@ socket.on('bombPlaced', ({ id, x, y }) => {
         0
     );
 
-    bombs.add(bomb);
-    bomb.setDepth(1);
+    bomb.displayWidth = TILE_SIZE;
+    bomb.displayHeight = TILE_SIZE;
 
     bombs.add(bomb);
     bomb.setDepth(1);
