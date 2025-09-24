@@ -10,6 +10,11 @@ const grid = generateRandomMap(81, 50);
 const players = {};
 const bombs = []; // { bombX, bombY, timer, explodeAt }
 
+const items = []; // { id, x, y, type }
+let itemIdCounter = 0;
+
+let PEACEFUL_BOTS = true;
+
 function generateRandomMap(rows = 81, cols = 50) {
     const grid = [];
     for (let y = 0; y < rows; y++) {
@@ -50,6 +55,21 @@ io.on('connection', (socket) => {
     });
 
     socket.on('placeBomb', () => placeBomb(socket.id));
+
+    socket.on('pickupItem', ({ itemId }) => {
+        const player = players[socket.id];
+        if (!player) return;
+
+        const idx = items.findIndex(it => it.id === itemId);
+        if (idx === -1) return;
+
+        const item = items[idx];
+        if (player.x === item.x && player.y === item.y) {
+            items.splice(idx, 1);
+            io.emit('itemPicked', { playerId: socket.id, itemId: item.id, type: item.type });
+        }
+    });
+
 
     socket.on('disconnect', () => {
         console.log(`Disconnected: ${socket.id}`);
@@ -117,6 +137,9 @@ setInterval(() => {
                 if(isCellDangerous(step.x, step.y)) return;
 
                 moveBot(p, step.x, step.y);
+
+                if(PEACEFUL_BOTS) return;
+
                 if (step.x === target.x && step.y === target.y) {
                     placeBomb(p.id);
                 }
@@ -285,7 +308,15 @@ function collectExplosion(bx, by, aff = new Set()) {
         for (let s = 1; s <= 3; s++) {
             const nx = bx + dx * s, ny = by + dy * s;
             if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) break;
-            if (grid[ny][nx] === 1) { grid[ny][nx] = 0; aff.add(`${nx},${ny}`); break; }
+            if (grid[ny][nx] === 1) { 
+                grid[ny][nx] = 0; 
+                aff.add(`${nx},${ny}`); 
+
+                if (Math.random() < 0.3) { // 30%
+                    spawnItem(nx, ny);
+                }
+                break; 
+            }
             else if (grid[ny][nx] === 0) aff.add(`${nx},${ny}`);
             else break;
         }
@@ -293,6 +324,17 @@ function collectExplosion(bx, by, aff = new Set()) {
     const chain = bombs.filter(b => aff.has(`${b.bombX},${b.bombY}`));
     chain.forEach(b => { clearTimeout(b.timer); collectExplosion(b.bombX, b.bombY, aff); });
     return aff;
+}
+
+function spawnItem(x, y) {
+    if (grid[y][x] !== 0) return;
+
+    const type = Math.random() < 0.5 ? "speed" : "bomb";
+    const id = "item" + (itemIdCounter++);
+    const item = { id, x, y, type };
+    items.push(item);
+
+    io.emit('itemSpawned', item);
 }
 
 const PORT = process.env.PORT || 3000;

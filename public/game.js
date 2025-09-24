@@ -47,6 +47,7 @@ let players = {};
 let cursors;
 let walls;
 let bombs;
+let items;
 
 let bombPrevew = false;
 
@@ -126,6 +127,44 @@ socket.on('playerDied', () => {
     deadText.setDepth(200);
 
     canMove = false;
+});
+
+socket.on('itemSpawned', (item) => {
+    const scene = player.scene;
+
+    const sprite = scene.add.rectangle(
+        item.x * TILE_SIZE + TILE_SIZE / 2,
+        item.y * TILE_SIZE + TILE_SIZE / 2,
+        TILE_SIZE * 0.6,
+        TILE_SIZE * 0.6,
+        item.type === "speed" ? 0x00aaff : 0xffaa00
+    );
+
+    sprite.setDepth(5);
+    sprite.itemId = item.id;
+    sprite.itemType = item.type;
+
+    items.add(sprite);
+});
+
+socket.on('itemPicked', ({ playerId, itemId, type }) => {
+    const scene = player.scene;
+
+    const child = items.getChildren().find(c => c.itemId === itemId);
+    if (child) {
+        child.destroy();
+        items.remove(child);
+    }
+
+    if (playerId === socket.id) {
+        let msg = "Picked up " + type;
+
+        if(type == "bomb"){
+            bombPrevew = true;
+        }
+
+        showDeathNotification(scene, msg);
+    }
 });
 
 socket.on('playerLeft', ({ id }) => {
@@ -219,6 +258,7 @@ function create() {
     /*this.input.keyboard.on('keydown-SPACE', () => {
         placeBomb.call(this);
     });*/
+    items = this.add.group();
 
     this.cameras.main.startFollow(player);
     this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
@@ -399,6 +439,8 @@ function tryMove(dx, dy) {
                 player.gridX = newX;
                 player.gridY = newY;
                 moving = false;
+
+                checkItemPickup();
                 updateVisibleBlocks.call(player.scene);
             }
         });
@@ -669,5 +711,19 @@ function removeDeathNotification(scene, entry) {
             duration: 200,
             ease: 'Cubic.easeOut'
         });
+    }
+}
+
+function checkItemPickup() {
+    if (!items) return;
+
+    const child = items.getChildren().find(
+        it => Math.floor((it.x - TILE_SIZE / 2) / TILE_SIZE) === player.gridX &&
+              Math.floor((it.y - TILE_SIZE / 2) / TILE_SIZE) === player.gridY
+    );
+    if (child) {
+        socket.emit('pickupItem', { itemId: child.itemId });
+        
+        items.remove(child, true, true);
     }
 }
