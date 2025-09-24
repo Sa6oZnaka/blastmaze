@@ -33,6 +33,14 @@ let GRID_WIDTH;
 let GRID_HEIGHT;
 const MOVE_DURATION = 150;
 
+// notifications
+let deathNotifications = []; 
+const NOTIF_DURATION = 5000;
+const NOTIF_FADE_DURATION = 800;
+const NOTIF_SPACING = 34;
+const NOTIF_X = 20;
+const NOTIF_Y = 20;
+
 let grid;
 let player;
 let players = {};
@@ -87,6 +95,16 @@ socket.on('playerLeft', ({ id }) => {
     if (players[id]) {
         players[id].destroy();
         delete players[id];
+    }
+
+    let text = "Player " + id + " died";
+    if (sceneCreated && player && player.scene) {
+        showDeathNotification(player.scene, text);
+    } else {
+        // ако сцената не е готова, пусни събитие в опашката
+        eventQueue.push(() => {
+            if (player && player.scene) showDeathNotification(player.scene, text);
+        });
     }
 });
 
@@ -603,3 +621,53 @@ function previewExplosion(x, y) {
     });
 }
 
+function showDeathNotification(scene, text) {
+    const txt = scene.add.text(NOTIF_X, NOTIF_Y + deathNotifications.length * NOTIF_SPACING, text, {
+        font: '20px Arial',
+        fill: '#ff4444',
+        stroke: '#000000',
+        strokeThickness: 4,
+        align: 'left'
+    }).setScrollFactor(0).setDepth(300);
+
+    const entry = {
+        textObj: txt,
+        timeout: null,
+        fadeTween: null
+    };
+
+    deathNotifications.push(entry);
+
+    entry.timeout = scene.time.delayedCall(NOTIF_DURATION, () => {
+        entry.fadeTween = scene.tweens.add({
+            targets: entry.textObj,
+            alpha: 0,
+            duration: NOTIF_FADE_DURATION,
+            ease: 'Cubic.easeIn',
+            onComplete: () => {
+                removeDeathNotification(scene, entry);
+            }
+        });
+    });
+}
+
+function removeDeathNotification(scene, entry) {
+    const idx = deathNotifications.indexOf(entry);
+    if (idx === -1) return;
+
+    if (entry.fadeTween) entry.fadeTween.stop();
+    if (entry.timeout) entry.timeout.remove(false);
+    entry.textObj.destroy();
+
+    deathNotifications.splice(idx, 1);
+
+    for (let i = idx; i < deathNotifications.length; i++) {
+        const targetY = NOTIF_Y + i * NOTIF_SPACING;
+        scene.tweens.add({
+            targets: deathNotifications[i].textObj,
+            y: targetY,
+            duration: 200,
+            ease: 'Cubic.easeOut'
+        });
+    }
+}
