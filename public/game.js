@@ -112,22 +112,35 @@ socket.on('playerLeft', ({ id }) => {
 socket.on('playerDied', () => {
     const scene = player.scene;
 
-    const deadText = scene.add.text(
-        scene.cameras.main.worldView.x + scene.cameras.main.width / 2,
-        scene.cameras.main.worldView.y + scene.cameras.main.height / 2,
-        'DEAD',
-        {
-            font: '64px Arial',
-            fill: '#ff0000',
-            stroke: '#000',
-            strokeThickness: 6
-        }
-    );
-    deadText.setOrigin(0.5);
-    deadText.setDepth(200);
+    deadText.setVisible(true);
+    respawnButton.setVisible(true);
 
     canMove = false;
 });
+
+socket.on('playerRespawned', ({ id, x, y }) => {
+
+    console.log("Player respawned");
+
+    if(id === socket.id){
+        player.gridX = x;
+        player.gridY = y;
+        player.x = x * TILE_SIZE + TILE_SIZE / 2;
+        player.y = y * TILE_SIZE + TILE_SIZE / 2;
+        canMove = true;
+
+        if(respawnButton){
+            deadText.setVisible(false);
+            respawnButton.setVisible(false);
+        }
+
+        updateVisibleBlocks();
+    } else if(players[id]){
+        players[id].x = x * TILE_SIZE + TILE_SIZE/2;
+        players[id].y = y * TILE_SIZE + TILE_SIZE/2;
+    }
+});
+
 
 socket.on('itemSpawned', (item) => {
     const scene = player.scene;
@@ -297,6 +310,44 @@ function create() {
     createLightGradientTexture(this);
 
     updateVisibleBlocks(this);
+
+    respawnButton = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 100, 'Respawn', {
+        fontFamily: 'Arial',
+        fontSize: '28px',
+        fontStyle: 'bold',
+        color: '#ffffff',
+        backgroundColor: '#1e1e1e',
+        padding: { x: 20, y: 10 },
+        align: 'center'
+    })
+    .setOrigin(0.5)
+    .setScrollFactor(0)
+    .setDepth(300)
+    .setInteractive({ useHandCursor: true })
+    .on('pointerdown', () => {
+        if(!canMove) { // only if is dead
+            socket.emit('respawn');
+        }
+    });
+    respawnButton.setVisible(false);
+
+    deadText = this.add.text(
+        this.cameras.main.centerX, 
+        this.cameras.main.centerY,
+        'DEAD',
+        {
+            font: '64px Arial',
+            fill: '#ff0000',
+            stroke: '#000',
+            strokeThickness: 6
+        }
+    )
+    .setOrigin(0.5)
+    .setScrollFactor(0)
+    .setDepth(200)
+    .setVisible(false);
+
+
 
     // Socket events after scene is created
     sceneCreated = true;

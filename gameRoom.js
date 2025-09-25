@@ -56,6 +56,11 @@ function createServer({ botsEnabled = true } = {}) {
             io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
         });
 
+        socket.on('respawn', () => {
+            players[socket.id] = { id: socket.id, x: 5, y: 5, bot: false };
+            io.emit('playerRespawned', { id: socket.id, x: 5, y: 5 });
+        });
+
         socket.on('placeBomb', () => placeBomb(socket.id));
 
         socket.on('pickupItem', ({ itemId }) => {
