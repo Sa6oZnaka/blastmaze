@@ -150,7 +150,7 @@ socket.on('itemSpawned', (item) => {
         item.y * TILE_SIZE + TILE_SIZE / 2,
         TILE_SIZE * 0.6,
         TILE_SIZE * 0.6,
-        item.type === "speed" ? 0x00aaff : 0xffaa00
+        item.type === "armor" ? 0x00aaff : 0xffaa00
     );
 
     sprite.setDepth(5);
@@ -207,11 +207,15 @@ function preload() {
 
     this.load.image('block', './assets/block.png');
     this.load.image('block2', './assets/block2.png');
-        this.load.spritesheet('bomb', 'assets/bomb.png', {
+    this.load.spritesheet('bomb', 'assets/bomb.png', {
         frameWidth: 90, 
         frameHeight: 90
     });
 
+    this.load.spritesheet('player', 'assets/marto.png', {
+        frameWidth: 124,
+        frameHeight: 124
+    });
 
 
     // Light gradeint
@@ -231,12 +235,54 @@ function preload() {
 
 
 function create() {
+    // animations
+    const framerate = 20;
+    this.anims.create({
+        key: 'walk-right',
+        frames: this.anims.generateFrameNumbers('player', { frames: [0, 4, 8] }),
+        frameRate: framerate,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'walk-left',
+        frames: this.anims.generateFrameNumbers('player', { frames: [1, 5, 9] }),
+        frameRate: framerate,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'walk-up',
+        frames: this.anims.generateFrameNumbers('player', { frames: [2, 6, 10] }),
+        frameRate: framerate,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'walk-down',
+        frames: this.anims.generateFrameNumbers('player', { frames: [3, 7, 11] }),
+        frameRate: framerate,
+        repeat: -1
+    });
+
     walls = this.physics.add.staticGroup();
     mapGraphics = this.add.graphics();
     mapGraphics.setDepth(-1); // да е зад всички обекти
     mapGraphics.setScrollFactor(1);
 
-    player = this.add.rectangle(0, 0, TILE_SIZE - 6, TILE_SIZE - 6, 0xbbbbbb);
+    //player = this.add.rectangle(0, 0, TILE_SIZE - 6, TILE_SIZE - 6, 0xbbbbbb);
+
+    player = this.add.sprite(
+        0,
+        0,
+        'player',
+        0
+    );
+    player.displayWidth = TILE_SIZE;
+    player.displayHeight = TILE_SIZE;
+
+    player.anims.play('walk-right', 1);
+
     player.gridX = 0;
     player.gridY = 0;
     player.x = player.gridX * TILE_SIZE + TILE_SIZE / 2;
@@ -346,8 +392,6 @@ function create() {
     .setScrollFactor(0)
     .setDepth(200)
     .setVisible(false);
-
-
 
     // Socket events after scene is created
     sceneCreated = true;
@@ -476,14 +520,35 @@ function tryMove(dx, dy) {
     const newY = player.gridY + dy;
 
     if (isInsideGrid(newX, newY) && grid[newY][newX] === 0) {
+        
+        let nextPlayerX = newX * TILE_SIZE + TILE_SIZE / 2;
+        let nextPlayerY = newY * TILE_SIZE + TILE_SIZE / 2;
+        
+        
         moving = true;
+
+
+        console.log(player.x, newX, dx);
 
         socket.emit('move', { dx, dy });
 
+        let moveUp = nextPlayerY < player.y;
+        let moveDown = nextPlayerY > player.y;
+        let moveRight = nextPlayerX > player.x;
+
+        if (nextPlayerY < player.y)
+            player.anims.play('walk-up', true);
+        else if (nextPlayerY > player.y)
+            player.anims.play('walk-down', true);
+        else if (nextPlayerX > player.x)
+            player.anims.play('walk-right', true);
+        else
+            player.anims.play('walk-left', true);
+
         moveTween = player.scene.tweens.add({
             targets: player,
-            x: newX * TILE_SIZE + TILE_SIZE / 2,
-            y: newY * TILE_SIZE + TILE_SIZE / 2,
+            x: nextPlayerX,
+            y: nextPlayerY,
             duration: MOVE_DURATION,
             ease: 'Linear',
             onComplete: () => {
@@ -491,6 +556,17 @@ function tryMove(dx, dy) {
                 player.gridY = newY;
                 moving = false;
 
+                player.anims.stop();
+
+                if (moveUp)
+                    player.setFrame(2);
+                else if (moveDown)
+                    player.setFrame(3);
+                else if (moveRight)
+                    player.setFrame(0);
+                else
+                    player.setFrame(1);
+                
                 checkItemPickup();
                 updateVisibleBlocks.call(player.scene);
             }
@@ -503,20 +579,47 @@ function tryMove(dx, dy) {
 
 socket.on('playerMoved', ({ id, x, y }) => {
     if (id === socket.id) return;
+
     const other = players[id];
     if (!other) return;
 
     const worldX = x * TILE_SIZE + TILE_SIZE / 2;
     const worldY = y * TILE_SIZE + TILE_SIZE / 2;
 
-    player.scene.tweens.add({
+    let moveUp = worldY < other.y;
+    let moveDown = worldY > other.y;
+    let moveRight = worldX > other.x;
+
+    if (worldY < other.y)
+       other.anims.play('walk-up', true);
+    else if (worldY > other.y)
+        other.anims.play('walk-down', true);
+    else if (worldX > other.x)
+        other.anims.play('walk-right', true);
+    else
+        other.anims.play('walk-left', true);
+
+    other.scene.tweens.add({
         targets: other,
         x: worldX,
         y: worldY,
         duration: MOVE_DURATION,
-        ease: 'Linear'
+        ease: 'Linear',
+        onComplete: () => {
+            other.anims.stop();
+
+            if (moveUp)
+                other.setFrame(2);
+            else if (moveDown)
+                other.setFrame(3);
+            else if (moveRight)
+                other.setFrame(0);
+            else
+                other.setFrame(1);
+            }
+        });
+
     });
-});
 
 
 function isInsideGrid(x, y) {
@@ -668,15 +771,18 @@ function createLightGradientTexture(scene) {
 }
 
 function addOtherPlayer(data) {
-    const other = player.scene.add.rectangle(
+    const other = player.scene.add.sprite(
         data.x * TILE_SIZE + TILE_SIZE / 2,
         data.y * TILE_SIZE + TILE_SIZE / 2,
-        TILE_SIZE - 6,
-        TILE_SIZE - 6,
-        0x44ff44
+        'player',
+        0
     );
+    other.displayWidth = TILE_SIZE;
+    other.displayHeight = TILE_SIZE;
+    
     players[data.id] = other;
 }
+
 
 function previewExplosion(x, y) {
     const affected = new Set();

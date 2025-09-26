@@ -338,7 +338,7 @@ function createServer({ botsEnabled = true } = {}) {
     function spawnItem(x, y) {
         if (grid[y][x] !== 0) return;
 
-        const type = Math.random() < 0.5 ? "speed" : "bomb";
+        const type = Math.random() < 0.5 ? "armor" : "bomb";
         const id = "item" + (itemIdCounter++);
         const item = { id, x, y, type };
         items.push(item);
