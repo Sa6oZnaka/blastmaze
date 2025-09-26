@@ -115,6 +115,7 @@ socket.on('playerDied', () => {
     deadText.setVisible(true);
     respawnButton.setVisible(true);
 
+    bombPrevew = false;
     canMove = false;
 });
 

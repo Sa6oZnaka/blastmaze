@@ -21,7 +21,7 @@ function createServer({ botsEnabled = true } = {}) {
     let BOT_ENABLED = true;
     let PEACEFUL_BOTS = true;
     let DROP_ENABLED = true;
-    let DROP_CHANCE = 0.2;
+    let DROP_CHANCE = 0.02;
     let BOMB_CLIPPING = true;
     let BOMB_RADIUS = 3;
 
@@ -358,7 +358,7 @@ function createServer({ botsEnabled = true } = {}) {
     function spawnItem(x, y) {
         if (grid[y][x] !== 0) return;
 
-        const type = Math.random() < 0.5 ? "armor" : "bomb";
+        const type = Math.random() < 1 ? "bomb" : "armor";// only bomb
         const id = "item" + (itemIdCounter++);
         const item = { id, x, y, type };
         items.push(item);
