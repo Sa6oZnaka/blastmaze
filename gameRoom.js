@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 
+
 function createServer({ botsEnabled = true } = {}) {
 
 
@@ -15,7 +16,14 @@ function createServer({ botsEnabled = true } = {}) {
     const items = []; // { id, x, y, type }
     let itemIdCounter = 0;
 
+
+    // SETTINGS //
+    let BOT_ENABLED = true;
     let PEACEFUL_BOTS = true;
+    let DROP_ENABLED = true;
+    let DROP_CHANCE = 0.2;
+    let BOMB_CLIPPING = true;
+    let BOMB_RADIUS = 3;
 
     function generateRandomMap(rows = 81, cols = 50) {
         const grid = [];
@@ -51,8 +59,15 @@ function createServer({ botsEnabled = true } = {}) {
         socket.on('move', ({ dx, dy }) => {
             const player = players[socket.id];
             if (!player) return;
+            
+            if(isCellBlocked(player.x + dx, player.y + dy)){
+                socket.emit("revertMove", ({x: player.x, y: player.y}));
+                return;
+            }
+
             player.x += dx;
             player.y += dy;
+
             io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
         });
 
@@ -91,7 +106,7 @@ function createServer({ botsEnabled = true } = {}) {
         io.emit('playerJoined', players[id]);
     }
 
-    if(botsEnabled){
+    if(BOT_ENABLED){
         addBot("bot1", 5, 5);
         addBot("bot2", 10, 10);
     }
@@ -158,8 +173,7 @@ function createServer({ botsEnabled = true } = {}) {
     }, 200);
 
     function moveBot(bot, newX, newY) {
-        if (newY < 0 || newY >= grid.length || newX < 0 || newX >= grid[0].length) return;
-        if (grid[newY][newX] !== 0) return;
+        if (isCellBlocked(newX, newY)) return;
         bot.x = newX;
         bot.y = newY;
         io.emit('playerMoved', { id: bot.id, x: bot.x, y: bot.y });
@@ -195,9 +209,8 @@ function createServer({ botsEnabled = true } = {}) {
             closed.add(`${cur.x},${cur.y}`);
             for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
                 const nx = cur.x + dx, ny = cur.y + dy;
-                if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) continue;
-                if (grid[ny][nx] !== 0) continue;
                 if (closed.has(`${nx},${ny}`)) continue;
+                if (isCellBlocked(nx, ny)) continue;
                 const g = cur.g + 1;
                 const f = g + heuristic(nx, ny, ex, ey);
                 const exst = open.find(n => n.x === nx && n.y === ny);
@@ -208,6 +221,13 @@ function createServer({ botsEnabled = true } = {}) {
         return null;
     }
     const heuristic = (x1, y1, x2, y2) => Math.abs(x1 - x2) + Math.abs(y1 - y2);
+
+    function isCellBlocked(x, y) {
+        if (y < 0 || y >= grid.length || x < 0 || x >= grid[0].length) return true;
+        if (grid[y][x] !== 0) return true;
+        if (BOMB_CLIPPING && bombs.some(b => b.bombX === x && b.bombY === y)) return true;
+        return false;
+    }
 
     function isCellDangerous(x, y) {
         const now = Date.now();
@@ -227,9 +247,8 @@ function createServer({ botsEnabled = true } = {}) {
             if (!isCellDangerous(n.x, n.y)) return n.path;
             for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
                 const nx = n.x + dx, ny = n.y + dy;
-                if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) continue;
-                if (grid[ny][nx] !== 0) continue;
                 if (visited.has(`${nx},${ny}`)) continue;
+                if (isCellBlocked(nx, ny)) continue;
                 visited.add(`${nx},${ny}`);
                 q.push({ x: nx, y: ny, path: [...n.path, { x: nx, y: ny }] });
             }
@@ -240,9 +259,7 @@ function createServer({ botsEnabled = true } = {}) {
     function findAnySafeNeighbor(x, y) {
         for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
             const nx = x + dx, ny = y + dy;
-            if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) continue;
-            if (grid[ny][nx] !== 0) continue;
-            if (!isCellDangerous(nx, ny)) return { x: nx, y: ny };
+            if (!isCellBlocked(nx, ny) && !isCellDangerous(nx, ny)) return { x: nx, y: ny };
         }
         return null;
     }
@@ -314,16 +331,19 @@ function createServer({ botsEnabled = true } = {}) {
         aff.add(`${bx},${by}`);
         grid[by][bx] = 0;
         for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
-            for (let s = 1; s <= 3; s++) {
+            for (let s = 1; s <= BOMB_RADIUS; s++) {
                 const nx = bx + dx * s, ny = by + dy * s;
                 if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) break;
                 if (grid[ny][nx] === 1) { 
                     grid[ny][nx] = 0; 
                     aff.add(`${nx},${ny}`); 
 
-                    if (Math.random() < 0.3) { // 30%
-                        spawnItem(nx, ny);
+                    if(DROP_ENABLED){
+                        if (Math.random() < DROP_CHANCE) {
+                            spawnItem(nx, ny);
+                        }
                     }
+                    
                     break; 
                 }
                 else if (grid[ny][nx] === 0) aff.add(`${nx},${ny}`);

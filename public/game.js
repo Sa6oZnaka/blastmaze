@@ -527,9 +527,6 @@ function tryMove(dx, dy) {
         
         moving = true;
 
-
-        console.log(player.x, newX, dx);
-
         socket.emit('move', { dx, dy });
 
         let moveUp = nextPlayerY < player.y;
@@ -577,6 +574,25 @@ function tryMove(dx, dy) {
     return false;
 }
 
+socket.on('revertMove', ({ x, y }) => {
+    console.warn("Reverting move due to server correction");
+
+    if (moveTween) {
+        moveTween.stop();
+        moveTween = null;
+    }
+
+    moving = false;
+
+    player.gridX = x;
+    player.gridY = y;
+    player.x = x * TILE_SIZE + TILE_SIZE / 2;
+    player.y = y * TILE_SIZE + TILE_SIZE / 2;
+
+    player.anims.stop();
+});
+
+
 socket.on('playerMoved', ({ id, x, y }) => {
     if (id === socket.id) return;
 
@@ -606,6 +622,9 @@ socket.on('playerMoved', ({ id, x, y }) => {
         duration: MOVE_DURATION,
         ease: 'Linear',
         onComplete: () => {
+            if(!other.anims)
+                return;
+
             other.anims.stop();
 
             if (moveUp)
