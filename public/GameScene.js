@@ -1,30 +1,3 @@
-const config = {
-    type: Phaser.AUTO,
-    width: window.innerWidth,
-    height: window.innerHeight,
-    backgroundColor: '#1a1a1a',
-    physics: {
-        default: 'arcade',
-        arcade: {
-            debug: false
-        }
-    },
-    scene: {
-        preload,
-        create,
-        update
-    },
-    plugins: {
-    scene: [
-      {
-        key: 'raycasterPlugin',
-        plugin: PhaserRaycaster,
-        mapping: 'raycasterPlugin'
-      }
-    ]
-  }
-};
-
 let eventQueue = [];
 let sceneCreated = false;
 
@@ -51,6 +24,10 @@ let items;
 
 let bombPrevew = false;
 
+let respawnButton;
+let deadText;
+
+let socket;
 socket = io();
 // map
 socket.on('mapData', (mapData) => {
@@ -59,7 +36,7 @@ socket.on('mapData', (mapData) => {
     GRID_WIDTH = mapData.width;
     GRID_HEIGHT = mapData.height;
 
-    new Phaser.Game(config);
+    //new Phaser.Game(config);
 });
 
 // players data
@@ -204,241 +181,246 @@ let canMove = true;
 let visibleBlocks;
 let blocksMap = {}; 
 
-function preload() {
+export default class GameScene extends Phaser.Scene {
 
-    this.load.image('block', './assets/block.png');
-    this.load.image('block2', './assets/block2.png');
-    this.load.spritesheet('bomb', 'assets/bomb.png', {
-        frameWidth: 90, 
-        frameHeight: 90
-    });
-
-    this.load.spritesheet('player', 'assets/marto.png', {
-        frameWidth: 124,
-        frameHeight: 124
-    });
-
-
-    // Light gradeint
-    const size = TILE_SIZE * 7;
-    const rt = this.textures.createCanvas('lightGradient', size, size);
-    const ctx = rt.getContext();
-
-    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    gradient.addColorStop(0, 'rgba(255,255,255,1)');
-    gradient.addColorStop(1, 'rgba(255,255,255,0)');
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, size, size);
-
-    rt.refresh();
-}
-
-
-function create() {
-    // animations
-    const framerate = 20;
-    this.anims.create({
-        key: 'walk-right',
-        frames: this.anims.generateFrameNumbers('player', { frames: [0, 4, 8] }),
-        frameRate: framerate,
-        repeat: -1
-    });
-
-    this.anims.create({
-        key: 'walk-left',
-        frames: this.anims.generateFrameNumbers('player', { frames: [1, 5, 9] }),
-        frameRate: framerate,
-        repeat: -1
-    });
-
-    this.anims.create({
-        key: 'walk-up',
-        frames: this.anims.generateFrameNumbers('player', { frames: [2, 6, 10] }),
-        frameRate: framerate,
-        repeat: -1
-    });
-
-    this.anims.create({
-        key: 'walk-down',
-        frames: this.anims.generateFrameNumbers('player', { frames: [3, 7, 11] }),
-        frameRate: framerate,
-        repeat: -1
-    });
-
-    walls = this.physics.add.staticGroup();
-    mapGraphics = this.add.graphics();
-    mapGraphics.setDepth(-1); // да е зад всички обекти
-    mapGraphics.setScrollFactor(1);
-
-    //player = this.add.rectangle(0, 0, TILE_SIZE - 6, TILE_SIZE - 6, 0xbbbbbb);
-
-    player = this.add.sprite(
-        0,
-        0,
-        'player',
-        0
-    );
-    player.displayWidth = TILE_SIZE;
-    player.displayHeight = TILE_SIZE;
-
-    player.anims.play('walk-right', 1);
-
-    player.gridX = 0;
-    player.gridY = 0;
-    player.x = player.gridX * TILE_SIZE + TILE_SIZE / 2;
-    player.y = player.gridY * TILE_SIZE + TILE_SIZE / 2;
-
-    this.physics.add.existing(player);
-    player.body.setCollideWorldBounds(true);
-
-    cursors = this.input.keyboard.addKeys({
-        up: 'W',
-        down: 'S',
-        left: 'A',
-        right: 'D'
-    });
-
-    this.input.keyboard.on('keydown-A', () => { heldLeft = true; });
-    this.input.keyboard.on('keyup-A', () => { heldLeft = false; });
-
-    this.input.keyboard.on('keydown-D', () => { heldRight = true; });
-    this.input.keyboard.on('keyup-D', () => { heldRight = false; });
-
-    this.input.keyboard.on('keydown-W', () => { heldUp = true; });
-    this.input.keyboard.on('keyup-W', () => { heldUp = false; });
-
-    this.input.keyboard.on('keydown-S', () => { heldDown = true; });
-    this.input.keyboard.on('keyup-S', () => { heldDown = false; });
-
-    this.input.keyboard.on('keydown-SPACE', () => { heldSpace = true; });
-    this.input.keyboard.on('keyup-SPACE', () => { heldSpace = false; });
-
-    bombs = this.add.group();
-    /*this.input.keyboard.on('keydown-SPACE', () => {
-        placeBomb.call(this);
-    });*/
-    items = this.add.group();
-
-    this.cameras.main.startFollow(player);
-    this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
-    this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
-
-    // Light
-    this.darkness = this.make.renderTexture({
-        width: this.cameras.main.width * 2,
-        height: this.cameras.main.height * 2,
-        add: true
-    });
-    this.darkness.setDepth(10);
-    this.darkness.setScrollFactor(0);
-
-    this.fpsText = this.add.text(10, 10, '', {
-        font: '16px Arial',
-        fill: '#ffffff'
-    })
-    .setScrollFactor(0)
-    .setDepth(100);
-
-    // Visible blocks from raycaster
-    visibleBlocks = this.physics.add.staticGroup();
-    this.renderedCells = new Set();
-
-    // TODO fix collider
-    //this.physics.add.collider(this.player, this.visibleBlocks);
-    this.cursors = this.input.keyboard.createCursorKeys();
-
-    // Raycaster
-    this.raycaster = this.raycasterPlugin.createRaycaster();
-    //this.raycaster.setBoundingBox(0, 0, this.worldCols * this.gridSize, this.worldRows * this.gridSize);
-    this.ray = this.raycaster.createRay({ origin: this.player, autoSlice: true });
-
-    this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
-    createLightGradientTexture(this);
-
-    updateVisibleBlocks(this);
-
-    respawnButton = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 100, 'Respawn', {
-        fontFamily: 'Arial',
-        fontSize: '28px',
-        fontStyle: 'bold',
-        color: '#ffffff',
-        backgroundColor: '#1e1e1e',
-        padding: { x: 20, y: 10 },
-        align: 'center'
-    })
-    .setOrigin(0.5)
-    .setScrollFactor(0)
-    .setDepth(300)
-    .setInteractive({ useHandCursor: true })
-    .on('pointerdown', () => {
-        if(!canMove) { // only if is dead
-            socket.emit('respawn');
-        }
-    });
-    respawnButton.setVisible(false);
-
-    deadText = this.add.text(
-        this.cameras.main.centerX, 
-        this.cameras.main.centerY,
-        'DEAD',
-        {
-            font: '64px Arial',
-            fill: '#ff0000',
-            stroke: '#000',
-            strokeThickness: 6
-        }
-    )
-    .setOrigin(0.5)
-    .setScrollFactor(0)
-    .setDepth(200)
-    .setVisible(false);
-
-    // Socket events after scene is created
-    sceneCreated = true;
-    for (const evt of eventQueue) {
-        evt();
+    constructor() {
+        super({ key: 'GameScene' });
     }
-    eventQueue = [];
-}
 
-function update() {
-    // FPS
-    const fps = Math.floor(this.game.loop.actualFps);
-    this.fpsText.setText(`FPS: ${fps}`);
+    preload() {
 
-    // Update the raycaster
-    updateRaycaster.call(this);
+        this.load.image('block', './assets/block.png');
+        this.load.image('block2', './assets/block2.png');
+        this.load.spritesheet('bomb', 'assets/bomb.png', {
+            frameWidth: 90, 
+            frameHeight: 90
+        });
 
-    // Light gradeint
-    updateLightGradient.call(this);
+        this.load.spritesheet('player', 'assets/marto.png', {
+            frameWidth: 124,
+            frameHeight: 124
+        });
 
-    // Movement
-    if(!canMove) return;
 
-    if (moving) return;
+        // Light gradeint
+        const size = TILE_SIZE * 7;
+        const rt = this.textures.createCanvas('lightGradient', size, size);
+        const ctx = rt.getContext();
 
-    if(heldSpace)
-        placeBomb.call(this);
+        const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        gradient.addColorStop(0, 'rgba(255,255,255,1)');
+        gradient.addColorStop(1, 'rgba(255,255,255,0)');
 
-    if (heldLeft && tryMove(-1, 0)) return;
-    if (heldRight && tryMove(1, 0)) return;
-    if (heldUp && tryMove(0, -1)) return;
-    if (heldDown && tryMove(0, 1)) return;
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+
+        rt.refresh();
+    }
+
+
+    create() {
+        // animations
+        const framerate = 20;
+        this.anims.create({
+            key: 'walk-right',
+            frames: this.anims.generateFrameNumbers('player', { frames: [0, 4, 8] }),
+            frameRate: framerate,
+            repeat: -1
+        });
+
+        this.anims.create({
+            key: 'walk-left',
+            frames: this.anims.generateFrameNumbers('player', { frames: [1, 5, 9] }),
+            frameRate: framerate,
+            repeat: -1
+        });
+
+        this.anims.create({
+            key: 'walk-up',
+            frames: this.anims.generateFrameNumbers('player', { frames: [2, 6, 10] }),
+            frameRate: framerate,
+            repeat: -1
+        });
+
+        this.anims.create({
+            key: 'walk-down',
+            frames: this.anims.generateFrameNumbers('player', { frames: [3, 7, 11] }),
+            frameRate: framerate,
+            repeat: -1
+        });
+
+        walls = this.physics.add.staticGroup();
+        mapGraphics = this.add.graphics();
+        mapGraphics.setDepth(-1); // да е зад всички обекти
+        mapGraphics.setScrollFactor(1);
+
+        //player = this.add.rectangle(0, 0, TILE_SIZE - 6, TILE_SIZE - 6, 0xbbbbbb);
+
+        player = this.add.sprite(
+            0,
+            0,
+            'player',
+            0
+        );
+        player.displayWidth = TILE_SIZE;
+        player.displayHeight = TILE_SIZE;
+
+        player.gridX = 0;
+        player.gridY = 0;
+        player.x = player.gridX * TILE_SIZE + TILE_SIZE / 2;
+        player.y = player.gridY * TILE_SIZE + TILE_SIZE / 2;
+
+        this.physics.add.existing(player);
+        player.body.setCollideWorldBounds(true);
+
+        cursors = this.input.keyboard.addKeys({
+            up: 'W',
+            down: 'S',
+            left: 'A',
+            right: 'D'
+        });
+
+        this.input.keyboard.on('keydown-A', () => { heldLeft = true; });
+        this.input.keyboard.on('keyup-A', () => { heldLeft = false; });
+
+        this.input.keyboard.on('keydown-D', () => { heldRight = true; });
+        this.input.keyboard.on('keyup-D', () => { heldRight = false; });
+
+        this.input.keyboard.on('keydown-W', () => { heldUp = true; });
+        this.input.keyboard.on('keyup-W', () => { heldUp = false; });
+
+        this.input.keyboard.on('keydown-S', () => { heldDown = true; });
+        this.input.keyboard.on('keyup-S', () => { heldDown = false; });
+
+        this.input.keyboard.on('keydown-SPACE', () => { heldSpace = true; });
+        this.input.keyboard.on('keyup-SPACE', () => { heldSpace = false; });
+
+        bombs = this.add.group();
+        /*this.input.keyboard.on('keydown-SPACE', () => {
+            placeBomb.call(this);
+        });*/
+        items = this.add.group();
+
+        this.cameras.main.startFollow(player);
+        this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+        this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+
+        // Light
+        this.darkness = this.make.renderTexture({
+            width: this.cameras.main.width * 2,
+            height: this.cameras.main.height * 2,
+            add: true
+        });
+        this.darkness.setDepth(10);
+        this.darkness.setScrollFactor(0);
+
+        this.fpsText = this.add.text(10, 10, '', {
+            font: '16px Arial',
+            fill: '#ffffff'
+        })
+        .setScrollFactor(0)
+        .setDepth(100);
+
+        // Visible blocks from raycaster
+        visibleBlocks = this.physics.add.staticGroup();
+        this.renderedCells = new Set();
+
+        // TODO fix collider
+        //this.physics.add.collider(this.player, this.visibleBlocks);
+        this.cursors = this.input.keyboard.createCursorKeys();
+
+        // Raycaster
+        this.raycaster = this.raycasterPlugin.createRaycaster();
+        //this.raycaster.setBoundingBox(0, 0, this.worldCols * this.gridSize, this.worldRows * this.gridSize);
+        this.ray = this.raycaster.createRay({ origin: this.player, autoSlice: true });
+
+        this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
+        createLightGradientTexture(this);
+
+        updateVisibleBlocks(this);
+
+        respawnButton = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 100, 'Respawn', {
+            fontFamily: 'Arial',
+            fontSize: '28px',
+            fontStyle: 'bold',
+            color: '#ffffff',
+            backgroundColor: '#1e1e1e',
+            padding: { x: 20, y: 10 },
+            align: 'center'
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(300)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => {
+            if(!canMove) { // only if is dead
+                socket.emit('respawn');
+            }
+        });
+        respawnButton.setVisible(false);
+
+        deadText = this.add.text(
+            this.cameras.main.centerX, 
+            this.cameras.main.centerY,
+            'DEAD',
+            {
+                font: '64px Arial',
+                fill: '#ff0000',
+                stroke: '#000',
+                strokeThickness: 6
+            }
+        )
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(200)
+        .setVisible(false);
+
+        // Socket events after scene is created
+        sceneCreated = true;
+        for (const evt of eventQueue) {
+            evt();
+        }
+        eventQueue = [];
+    }
+
+    update() {
+        // FPS
+        const fps = Math.floor(this.game.loop.actualFps);
+        this.fpsText.setText(`FPS: ${fps}`);
+
+        // Update the raycaster
+        updateRaycaster.call(this);
+
+        // Light gradeint
+        updateLightGradient.call(this);
+
+        // Movement
+        if(!canMove) return;
+
+        if (moving) return;
+
+        if(heldSpace)
+            placeBomb.call(this);
+
+        if (heldLeft && tryMove(-1, 0)) return;
+        if (heldRight && tryMove(1, 0)) return;
+        if (heldUp && tryMove(0, -1)) return;
+        if (heldDown && tryMove(0, 1)) return;
+    }
 }
 
 function updateLightGradient() {
-    this.darkness.clear();
-    this.darkness.fill(0x000000, 1);
+        this.darkness.clear();
+        this.darkness.fill(0x000000, 1);
 
-    const camView = this.cameras.main.worldView;
-    const playerCamX = player.x - camView.x + this.cameras.main.width;
-    const playerCamY = player.y - camView.y + this.cameras.main.height;
+        const camView = this.cameras.main.worldView;
+        const playerCamX = player.x - camView.x + this.cameras.main.width;
+        const playerCamY = player.y - camView.y + this.cameras.main.height;
 
-    const light = this.add.image(playerCamX, playerCamY, 'lightGradient').setScale(2).setAlpha(1);
-    this.darkness.erase(light);
-    light.destroy();
-}
+        const light = this.add.image(playerCamX, playerCamY, 'lightGradient').setScale(2).setAlpha(1);
+        this.darkness.erase(light);
+        light.destroy();
+    }
 
 function updateVisibleBlocks() {
     const radius = 10;
