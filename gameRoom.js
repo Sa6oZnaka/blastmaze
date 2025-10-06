@@ -1,14 +1,12 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
+//const { Server } = require('socket.io');
 
 
-function createServer({ botsEnabled = true } = {}) {
+module.exports = function (io){
+
+//function createServer({ botsEnabled = true } = {}) {
 
 
-    const app = express();
-    const server = http.createServer(app);
-    const io = new Server(server);
+    //const io = new Server(server);
     const grid = generateRandomMap(81, 50);
     const players = {};
     const bombs = []; // { bombX, bombY, timer, explodeAt }
@@ -44,7 +42,7 @@ function createServer({ botsEnabled = true } = {}) {
         return grid;
     }
 
-    app.use(express.static('public'));
+    
 
     io.on('connection', (socket) => {
         console.log(`New connection: ${socket.id}`);
@@ -366,7 +364,7 @@ function createServer({ botsEnabled = true } = {}) {
         io.emit('itemSpawned', item);
     }
 
-    return server;
+    //return server;
 }
 
-module.exports = { createServer };
+//module.exports = { createServer };
