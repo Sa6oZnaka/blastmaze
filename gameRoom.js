@@ -42,7 +42,17 @@ module.exports = function (io){
         return grid;
     }
 
-    
+    io.use((socket, next) => {
+        const sess = socket.handshake.session;
+
+        if (!sess || !sess.user) {
+            console.log('❌ Blocked socket with no session');
+            return next(new Error('Unauthorized'));
+        }
+
+        console.log('✅ Socket session:', sess.user.username);
+        next();
+    });
 
     io.on('connection', (socket) => {
         console.log(`New connection: ${socket.id}`);

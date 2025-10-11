@@ -4,6 +4,8 @@ const { Server } = require('socket.io');
 const passport = require('passport');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
+const sharedsession = require('express-socket.io-session');
+
 const flash = require('express-flash');
 const bodyParser = require('body-parser');
 
@@ -13,15 +15,22 @@ const server = http.createServer(app);
 const io = new Server(server);
 const connection = require('./dbInit');
 
+const sessionMiddleware = session({
+  secret: 'supersecret123',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false }
+});
+
+app.use(sessionMiddleware);
+io.use(sharedsession(sessionMiddleware, {
+  autoSave: true
+}));
+
 app.set('view engine', 'ejs')
     .use(cookieParser())
     .use(bodyParser.urlencoded({
         extended: true
-    }))
-    .use(session({
-        secret: 'justasecret',
-        resave: true,
-        saveUninitialized: true
     }))
     //.use('/src', express.static('src'))
     //.use('/config', express.static('config'))
