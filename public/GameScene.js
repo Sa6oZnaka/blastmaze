@@ -22,6 +22,9 @@ let walls;
 let bombs;
 let items;
 
+let gameSceneRef = null;
+
+
 let bombPrevew = false;
 
 let respawnButton;
@@ -31,12 +34,13 @@ let socket;
 socket = io();
 // map
 socket.on('mapData', (mapData) => {
-
-    grid = mapData.grid;
-    GRID_WIDTH = mapData.width;
-    GRID_HEIGHT = mapData.height;
+    safeEvent(() => {
+        grid = mapData.grid;
+        GRID_WIDTH = mapData.width;
+        GRID_HEIGHT = mapData.height;
 
     //new Phaser.Game(config);
+    });
 });
 
 // players data
@@ -45,6 +49,21 @@ socket.on('currentPlayers', (serverPlayers) => {
         for (const id in serverPlayers) {
             if (id !== socket.id) {
                 addOtherPlayer(serverPlayers[id]);
+            }else{
+                addOtherPlayer(serverPlayers[id]);
+                player = players[id];
+
+                console.log("Ok tva sum azzz");
+
+                player.gridX = 0;
+                player.gridY = 0;
+                player.x = 0 * TILE_SIZE + TILE_SIZE / 2;
+                player.y = 0 * TILE_SIZE + TILE_SIZE / 2;
+                canMove = true;
+
+                gameSceneRef.cameras.main.startFollow(player);
+
+                updateVisibleBlocks.call(gameSceneRef);
             }
         }
     };
@@ -57,112 +76,177 @@ socket.on('currentPlayers', (serverPlayers) => {
 });
 
 socket.on('playerJoined', (data) => {
-    if (data.id !== socket.id) {
-        const handleJoin = () => addOtherPlayer(data);
-        if (sceneCreated) {
-            handleJoin();
-        } else {
-            eventQueue.push(handleJoin);
+    safeEvent(() => {
+        if (data.id !== socket.id) {
+            const handleJoin = () => addOtherPlayer(data);
+            if (sceneCreated) {
+                handleJoin();
+            } else {
+                eventQueue.push(handleJoin);
+            }
         }
-    }
+    });
 });
 
 socket.on('playerLeft', ({ id }) => {
-    console.log("Player " + id + " died!");
+    safeEvent(() => {
 
-    if (players[id]) {
-        players[id].destroy();
-        delete players[id];
-    }
+        console.log("Player " + id + " left!");
 
-    let text = "Player " + id + " died";
-    if (sceneCreated && player && player.scene) {
-        showDeathNotification(player.scene, text);
-    } else {
-        // ако сцената не е готова, пусни събитие в опашката
-        eventQueue.push(() => {
-            if (player && player.scene) showDeathNotification(player.scene, text);
-        });
-    }
-});
+        var username = id;
+        if (players[id]) {
+            if(players[id].username){
+                username = players[id].username;
+            }
 
-socket.on('playerDied', () => {
-    const scene = player.scene;
-
-    deadText.setVisible(true);
-    respawnButton.setVisible(true);
-
-    bombPrevew = false;
-    canMove = false;
-});
-
-socket.on('playerRespawned', ({ id, x, y }) => {
-
-    console.log("Player respawned");
-
-    if(id === socket.id){
-        player.gridX = x;
-        player.gridY = y;
-        player.x = x * TILE_SIZE + TILE_SIZE / 2;
-        player.y = y * TILE_SIZE + TILE_SIZE / 2;
-        canMove = true;
-
-        if(respawnButton){
-            deadText.setVisible(false);
-            respawnButton.setVisible(false);
+            players[id].destroy();
+            delete players[id];
         }
 
-        updateVisibleBlocks();
-    } else if(players[id]){
-        players[id].x = x * TILE_SIZE + TILE_SIZE/2;
-        players[id].y = y * TILE_SIZE + TILE_SIZE/2;
-    }
+        let text = "Player " + username + " left";
+        if (sceneCreated && player && player.scene) {
+            showDeathNotification(player.scene, text);
+        } else {
+            // ако сцената не е готова, пусни събитие в опашката
+            eventQueue.push(() => {
+                if (player && player.scene) showDeathNotification(player.scene, text);
+            });
+        }
+    });
+});
+
+socket.on('playerDied', ({ id }) => {
+    safeEvent(() => {
+        if(id == socket.id){
+
+            const scene = player.scene;
+
+            deadText.setVisible(true);
+            respawnButton.setVisible(true);
+
+            bombPrevew = false;
+            canMove = false;
+        }else{
+            var username = id;
+            if (players[id]) {
+                if(players[id].username){
+                    username = players[id].username;
+                }
+
+                players[id].visible = false;
+                //delete players[id];
+            }
+
+            let text = "Player " + username + " died";
+            if (sceneCreated && player && player.scene) {
+                showDeathNotification(player.scene, text);
+            } else {
+                // ако сцената не е готова, пусни събитие в опашката
+                eventQueue.push(() => {
+                    if (player && player.scene) showDeathNotification(player.scene, text);
+                });
+            }
+
+        }
+    });
+});
+
+socket.on('playerRespawned', (data) => {
+    safeEvent(() => {
+
+        console.log("Player respawned");
+
+        players[data.id].visible = true;
+        // new x and y position
+        players[data.id].x = data.x * TILE_SIZE + TILE_SIZE / 2;
+        players[data.id].y = data.y * TILE_SIZE + TILE_SIZE / 2;
+
+        if(socket.id === data.id){
+            
+            
+            player = players[socket.id];
+
+            console.log("Danni i player");
+            console.log(data);
+            console.log(player);
+
+            player.gridX = data.x;
+            player.gridY = data.y;
+            player.x = data.x * TILE_SIZE + TILE_SIZE / 2;
+            player.y = data.y * TILE_SIZE + TILE_SIZE / 2;
+            canMove = true;
+
+            gameSceneRef.cameras.main.startFollow(player);
+
+            if(respawnButton){
+                deadText.setVisible(false);
+                respawnButton.setVisible(false);
+            }
+
+            updateVisibleBlocks.call(gameSceneRef);
+        } //else if(players[id]){
+            //players[id].x = x * TILE_SIZE + TILE_SIZE/2;
+            //players[id].y = y * TILE_SIZE + TILE_SIZE/2;
+        //}
+    });
 });
 
 
 socket.on('itemSpawned', (item) => {
-    const scene = player.scene;
+    safeEvent(() => {
 
-    const sprite = scene.add.rectangle(
-        item.x * TILE_SIZE + TILE_SIZE / 2,
-        item.y * TILE_SIZE + TILE_SIZE / 2,
-        TILE_SIZE * 0.6,
-        TILE_SIZE * 0.6,
-        item.type === "armor" ? 0x00aaff : 0xffaa00
-    );
+        const scene = player.scene;
 
-    sprite.setDepth(5);
-    sprite.itemId = item.id;
-    sprite.itemType = item.type;
+        const sprite = scene.add.rectangle(
+            item.x * TILE_SIZE + TILE_SIZE / 2,
+            item.y * TILE_SIZE + TILE_SIZE / 2,
+            TILE_SIZE * 0.6,
+            TILE_SIZE * 0.6,
+            item.type === "armor" ? 0x00aaff : 0xffaa00
+        );
 
-    items.add(sprite);
+        sprite.setDepth(5);
+        sprite.itemId = item.id;
+        sprite.itemType = item.type;
+
+        items.add(sprite);
+
+    });
 });
 
 socket.on('itemPicked', ({ playerId, itemId, type }) => {
-    const scene = player.scene;
+    safeEvent(() => {
 
-    const child = items.getChildren().find(c => c.itemId === itemId);
-    if (child) {
-        child.destroy();
-        items.remove(child);
-    }
+        const scene = player.scene;
 
-    if (playerId === socket.id) {
-        let msg = "Picked up " + type;
-
-        if(type == "bomb"){
-            bombPrevew = true;
+        const child = items.getChildren().find(c => c.itemId === itemId);
+        if (child) {
+            child.destroy();
+            items.remove(child);
         }
 
-        showDeathNotification(scene, msg);
-    }
+        if (playerId === socket.id) {
+            let msg = "Picked up " + type;
+
+            if(type == "bomb"){
+                bombPrevew = true;
+            }
+
+            showDeathNotification(scene, msg);
+        }
+
+    });
 });
 
 socket.on('playerLeft', ({ id }) => {
-    if (players[id]) {
-        players[id].destroy();
-        delete players[id];
-    }
+    safeEvent(() => {
+
+        if (players[id]) {
+            players[id].destroy();
+            delete players[id];
+        }
+
+    });
 });
 
 let mapGraphics;
@@ -220,6 +304,11 @@ export default class GameScene extends Phaser.Scene {
 
     create() {
         // animations
+
+        //console.log("Gamescene created!!!");
+        gameSceneRef = this;
+
+
         const framerate = 20;
         this.anims.create({
             key: 'walk-right',
@@ -256,6 +345,7 @@ export default class GameScene extends Phaser.Scene {
 
         //player = this.add.rectangle(0, 0, TILE_SIZE - 6, TILE_SIZE - 6, 0xbbbbbb);
 
+        /*
         player = this.add.sprite(
             0,
             0,
@@ -278,7 +368,7 @@ export default class GameScene extends Phaser.Scene {
             down: 'S',
             left: 'A',
             right: 'D'
-        });
+        });*/
 
         this.input.keyboard.on('keydown-A', () => { heldLeft = true; });
         this.input.keyboard.on('keyup-A', () => { heldLeft = false; });
@@ -301,7 +391,7 @@ export default class GameScene extends Phaser.Scene {
         });*/
         items = this.add.group();
 
-        this.cameras.main.startFollow(player);
+        //this.cameras.main.startFollow(player);
         this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
         this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
@@ -429,10 +519,13 @@ function updateVisibleBlocks() {
     if(!visibleBlocks)
         return;
 
+    if(!player) return;
+
     const startX = Math.max(0, player.gridX - radius);
     const endX = Math.min(GRID_WIDTH, player.gridX + radius + 1);
     const startY = Math.max(0, player.gridY - radius);
     const endY = Math.min(GRID_HEIGHT, player.gridY + radius + 1);
+
 
     // Add Visible
     for (let y = startY; y < endY; y++) {
@@ -465,6 +558,8 @@ function updateVisibleBlocks() {
             }
         }
     }
+
+    //if(!this || !this.raycaster) return;
 
     for (const key in blocksMap) {
         const [bx, by] = key.split('_').map(Number);
@@ -503,7 +598,7 @@ function tryMove(dx, dy) {
     const newY = player.gridY + dy;
 
     if (isInsideGrid(newX, newY) && grid[newY][newX] === 0) {
-        
+    
         let nextPlayerX = newX * TILE_SIZE + TILE_SIZE / 2;
         let nextPlayerY = newY * TILE_SIZE + TILE_SIZE / 2;
         
@@ -516,6 +611,8 @@ function tryMove(dx, dy) {
         let moveDown = nextPlayerY > player.y;
         let moveRight = nextPlayerX > player.x;
 
+        if(!player || !player.anims) return;
+
         if (nextPlayerY < player.y)
             player.anims.play('walk-up', true);
         else if (nextPlayerY > player.y)
@@ -525,7 +622,7 @@ function tryMove(dx, dy) {
         else
             player.anims.play('walk-left', true);
 
-        moveTween = player.scene.tweens.add({
+        moveTween = gameSceneRef.tweens.add({
             targets: player,
             x: nextPlayerX,
             y: nextPlayerY,
@@ -535,6 +632,10 @@ function tryMove(dx, dy) {
                 player.gridX = newX;
                 player.gridY = newY;
                 moving = false;
+
+                // player died
+                if(!player.anims)
+                    return;
 
                 player.anims.stop();
 
@@ -548,7 +649,7 @@ function tryMove(dx, dy) {
                     player.setFrame(1);
                 
                 checkItemPickup();
-                updateVisibleBlocks.call(player.scene);
+                updateVisibleBlocks.call(gameSceneRef);
             }
         });
 
@@ -577,52 +678,52 @@ socket.on('revertMove', ({ x, y }) => {
 
 
 socket.on('playerMoved', ({ id, x, y }) => {
-    if (id === socket.id) return;
+    safeEvent(() => {
+        if (id === socket.id) return;
 
-    const other = players[id];
-    if (!other) return;
+        const other = players[id];
+        if (!other) return;
 
-    const worldX = x * TILE_SIZE + TILE_SIZE / 2;
-    const worldY = y * TILE_SIZE + TILE_SIZE / 2;
+        const worldX = x * TILE_SIZE + TILE_SIZE / 2;
+        const worldY = y * TILE_SIZE + TILE_SIZE / 2;
 
-    let moveUp = worldY < other.y;
-    let moveDown = worldY > other.y;
-    let moveRight = worldX > other.x;
+        let moveUp = worldY < other.y;
+        let moveDown = worldY > other.y;
+        let moveRight = worldX > other.x;
 
-    if (worldY < other.y)
-       other.anims.play('walk-up', true);
-    else if (worldY > other.y)
-        other.anims.play('walk-down', true);
-    else if (worldX > other.x)
-        other.anims.play('walk-right', true);
-    else
-        other.anims.play('walk-left', true);
+        if (worldY < other.y)
+        other.anims.play('walk-up', true);
+        else if (worldY > other.y)
+            other.anims.play('walk-down', true);
+        else if (worldX > other.x)
+            other.anims.play('walk-right', true);
+        else
+            other.anims.play('walk-left', true);
 
-    other.scene.tweens.add({
-        targets: other,
-        x: worldX,
-        y: worldY,
-        duration: MOVE_DURATION,
-        ease: 'Linear',
-        onComplete: () => {
-            if(!other.anims)
-                return;
+        other.scene.tweens.add({
+            targets: other,
+            x: worldX,
+            y: worldY,
+            duration: MOVE_DURATION,
+            ease: 'Linear',
+            onComplete: () => {
+                if(!other.anims)
+                    return;
 
-            other.anims.stop();
+                other.anims.stop();
 
-            if (moveUp)
-                other.setFrame(2);
-            else if (moveDown)
-                other.setFrame(3);
-            else if (moveRight)
-                other.setFrame(0);
-            else
-                other.setFrame(1);
+                if (moveUp)
+                    other.setFrame(2);
+                else if (moveDown)
+                    other.setFrame(3);
+                else if (moveRight)
+                    other.setFrame(0);
+                else
+                    other.setFrame(1);
             }
         });
-
     });
-
+});
 
 function isInsideGrid(x, y) {
     return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
@@ -632,55 +733,67 @@ function placeBomb() {
     socket.emit('placeBomb');
 }
 
-socket.on('bombPlaced', ({ id, x, y }) => {
-    const bomb = player.scene.add.sprite(
-        x * TILE_SIZE + TILE_SIZE / 2,
-        y * TILE_SIZE + TILE_SIZE / 2,
-        'bomb',
-        0
-    );
-
-    bomb.displayWidth = TILE_SIZE;
-    bomb.displayHeight = TILE_SIZE;
-
-    bombs.add(bomb);
-    bomb.setDepth(1);
-
-    player.scene.time.delayedCall(600, () => {
-        bomb.setFrame(1);
-    });
-
-    player.scene.time.delayedCall(1200, () => {
-        bomb.setFrame(2);
-    });
-
-    player.scene.time.delayedCall(1800, () => {
-        bomb.setFrame(3);
-    });
-
-    if(bombPrevew){
-        const affected = previewExplosion(x, y);
-        affected.forEach(({ x: ax, y: ay }) => {
-            const cx = ax * TILE_SIZE;
-            const cy = ay * TILE_SIZE;
-            const previewTile = player.scene.add.rectangle(
-                cx + TILE_SIZE / 2,
-                cy + TILE_SIZE / 2,
-                TILE_SIZE,
-                TILE_SIZE,
-                0xffff00,
-                0.3
-            );
-            previewTile.setDepth(0);
-            
-            bomb.previewTiles = bomb.previewTiles || [];
-            bomb.previewTiles.push(previewTile);
-        });
+function safeEvent(callback) {
+    if (sceneCreated && gameSceneRef) {
+        callback();
+    } else {
+        eventQueue.push(callback);
     }
+}
+
+socket.on('bombPlaced', ({ id, x, y }) => {
+    safeEvent(() => {
+        const bomb = gameSceneRef.add.sprite(
+            x * TILE_SIZE + TILE_SIZE / 2,
+            y * TILE_SIZE + TILE_SIZE / 2,
+            'bomb',
+            0
+        );
+
+        bomb.displayWidth = TILE_SIZE;
+        bomb.displayHeight = TILE_SIZE;
+
+        bombs.add(bomb);
+        bomb.setDepth(1);
+
+        gameSceneRef.time.delayedCall(600, () => {
+            bomb.setFrame(1);
+        });
+
+        gameSceneRef.time.delayedCall(1200, () => {
+            bomb.setFrame(2);
+        });
+
+        gameSceneRef.time.delayedCall(1800, () => {
+            bomb.setFrame(3);
+        });
+
+        if(bombPrevew){
+            const affected = previewExplosion(x, y);
+            affected.forEach(({ x: ax, y: ay }) => {
+                const cx = ax * TILE_SIZE;
+                const cy = ay * TILE_SIZE;
+                const previewTile = gameSceneRef.add.rectangle(
+                    cx + TILE_SIZE / 2,
+                    cy + TILE_SIZE / 2,
+                    TILE_SIZE,
+                    TILE_SIZE,
+                    0xffff00,
+                    0.3
+                );
+                previewTile.setDepth(0);
+                
+                bomb.previewTiles = bomb.previewTiles || [];
+                bomb.previewTiles.push(previewTile);
+            });
+        }
+    });
 });
 
 socket.on('bombExploded', ({ x, y, affected }) => {
-    const scene = player.scene;
+    safeEvent(() => {
+
+    const scene = gameSceneRef;
 
     const children = [...bombs.getChildren()];
     for (const bomb of children) {
@@ -736,6 +849,7 @@ socket.on('bombExploded', ({ x, y, affected }) => {
                 });
             }
         }
+       
     });
 
     // remove prevew
@@ -751,6 +865,7 @@ socket.on('bombExploded', ({ x, y, affected }) => {
             bombs.remove(bomb, true, true);
         }
     }
+    });
 });
 
 function createLightGradientTexture(scene) {
@@ -773,7 +888,10 @@ function createLightGradientTexture(scene) {
 }
 
 function addOtherPlayer(data) {
-    const other = player.scene.add.sprite(
+    console.log("Add player");
+    console.log(data);
+
+    const other = gameSceneRef.add.sprite(
         data.x * TILE_SIZE + TILE_SIZE / 2,
         data.y * TILE_SIZE + TILE_SIZE / 2,
         'player',
@@ -781,7 +899,13 @@ function addOtherPlayer(data) {
     );
     other.displayWidth = TILE_SIZE;
     other.displayHeight = TILE_SIZE;
-    
+    other.username = data.username;
+
+    if(!data.alive)
+        other.visible = false;
+
+    console.log(data);
+
     players[data.id] = other;
 }
 

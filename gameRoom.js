@@ -56,9 +56,17 @@ module.exports = function (io){
 
     io.on('connection', (socket) => {
         console.log(`New connection: ${socket.id}`);
+        const sess = socket.handshake.session;
 
         const mapData = { grid, width: grid[0].length, height: grid.length };
-        players[socket.id] = { id: socket.id, x: 0, y: 0, bot: false };
+        players[socket.id] = { 
+            id: socket.id, 
+            x: 0, 
+            y: 0, 
+            bot: false,
+            username: sess.user.username,
+            alive: true 
+        };
 
         socket.emit('mapData', mapData);
         socket.emit('currentPlayers', players);
@@ -80,8 +88,13 @@ module.exports = function (io){
         });
 
         socket.on('respawn', () => {
-            players[socket.id] = { id: socket.id, x: 5, y: 5, bot: false };
-            io.emit('playerRespawned', { id: socket.id, x: 5, y: 5 });
+            //players[socket.id] = { id: socket.id, x: 5, y: 5, bot: false };
+
+            players[socket.id].x = 5;
+            players[socket.id].y = 5;
+            players[socket.id].alive = true;
+
+            io.emit('playerRespawned', players[socket.id]);
         });
 
         socket.on('placeBomb', () => placeBomb(socket.id));
@@ -110,7 +123,7 @@ module.exports = function (io){
 
     // ===== BOTS =====
     function addBot(id, x, y) {
-        players[id] = { id, x, y, bot: true, escaping: false, escapePath: null };
+        players[id] = { id, x, y, bot: true, escaping: false, escapePath: null, alive: true };
         io.emit('playerJoined', players[id]);
     }
 
@@ -277,6 +290,8 @@ module.exports = function (io){
         for (const id in players) {
             const p = players[id];
             if (p.bot) continue;
+            if (!p.alive) continue;
+            
             const d = Math.abs(bot.x - p.x) + Math.abs(bot.y - p.y);
             if (d < min) { min = d; target = p; }
         }
@@ -302,7 +317,9 @@ module.exports = function (io){
             const p = players[id];
             if (aff.has(`${p.x},${p.y}`)) {
                 if (!p.bot) {
-                    io.to(id).emit('playerDied');
+                    if(!p.alive) return;// already dead
+
+                    io.to(id).emit('playerDied', {id});
                 } else {
                     setTimeout(() => {
                         const newId = "bot" + Math.floor(Math.random() * 100000);
@@ -316,8 +333,9 @@ module.exports = function (io){
                     }, 2000);
                 }
 
-                io.emit('playerLeft', { id });
-                delete players[id];
+                io.emit('playerDied', { id });
+                players[id].alive = false;
+                //delete players[id];
             }
         }
     }
