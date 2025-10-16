@@ -88,9 +88,7 @@ module.exports = function (io){
         });
 
         socket.on('respawn', () => {
-            //players[socket.id] = { id: socket.id, x: 5, y: 5, bot: false };
 
-            players[socket.id].x = 5;
             players[socket.id].y = 5;
             players[socket.id].alive = true;
 
@@ -319,23 +317,15 @@ module.exports = function (io){
                 if (!p.bot) {
                     if(!p.alive) return;// already dead
 
+                    players[id].alive = false;
                     io.to(id).emit('playerDied', {id});
                 } else {
-                    setTimeout(() => {
-                        const newId = "bot" + Math.floor(Math.random() * 100000);
-                
-                        let bx, by;
-                        do {
-                            bx = Math.floor(Math.random() * grid[0].length);
-                            by = Math.floor(Math.random() * grid.length);
-                        } while (grid[by][bx] !== 0);
-                        addBot(newId, bx, by);
-                    }, 2000);
+                    // bot
+                    p.x = Math.floor(Math.random() * grid[0].length);
+                    p.y = Math.floor(Math.random() * grid.length);
                 }
 
                 io.emit('playerDied', { id });
-                players[id].alive = false;
-                //delete players[id];
             }
         }
     }

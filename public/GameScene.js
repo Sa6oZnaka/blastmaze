@@ -17,14 +17,11 @@ const NOTIF_Y = 20;
 let grid;
 let player;
 let players = {};
-let cursors;
 let walls;
 let bombs;
 let items;
 
 let gameSceneRef = null;
-
-
 let bombPrevew = false;
 
 let respawnButton;
@@ -35,11 +32,10 @@ socket = io();
 // map
 socket.on('mapData', (mapData) => {
     safeEvent(() => {
-        grid = mapData.grid;
         GRID_WIDTH = mapData.width;
         GRID_HEIGHT = mapData.height;
 
-    //new Phaser.Game(config);
+        grid = mapData.grid;
     });
 });
 
@@ -48,22 +44,23 @@ socket.on('currentPlayers', (serverPlayers) => {
     const handlePlayers = () => {
         for (const id in serverPlayers) {
             if (id !== socket.id) {
-                addOtherPlayer(serverPlayers[id]);
+                addPlayer(serverPlayers[id]);
             }else{
-                addOtherPlayer(serverPlayers[id]);
+                addPlayer(serverPlayers[id]);
                 player = players[id];
-
-                console.log("Ok tva sum azzz");
 
                 player.gridX = 0;
                 player.gridY = 0;
-                player.x = 0 * TILE_SIZE + TILE_SIZE / 2;
-                player.y = 0 * TILE_SIZE + TILE_SIZE / 2;
                 canMove = true;
 
                 gameSceneRef.cameras.main.startFollow(player);
+                gameSceneRef.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+                gameSceneRef.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
-                updateVisibleBlocks.call(gameSceneRef);
+                gameSceneRef.raycaster = gameSceneRef.raycasterPlugin.createRaycaster();
+                gameSceneRef.ray = gameSceneRef.raycaster.createRay({ origin: player, autoSlice: true });
+
+                updateVisibleBlocks.call();
             }
         }
     };
@@ -77,21 +74,12 @@ socket.on('currentPlayers', (serverPlayers) => {
 
 socket.on('playerJoined', (data) => {
     safeEvent(() => {
-        if (data.id !== socket.id) {
-            const handleJoin = () => addOtherPlayer(data);
-            if (sceneCreated) {
-                handleJoin();
-            } else {
-                eventQueue.push(handleJoin);
-            }
-        }
+        addPlayer(data);
     });
 });
 
 socket.on('playerLeft', ({ id }) => {
     safeEvent(() => {
-
-        console.log("Player " + id + " left!");
 
         var username = id;
         if (players[id]) {
@@ -104,22 +92,13 @@ socket.on('playerLeft', ({ id }) => {
         }
 
         let text = "Player " + username + " left";
-        if (sceneCreated && player && player.scene) {
-            showDeathNotification(player.scene, text);
-        } else {
-            // ако сцената не е готова, пусни събитие в опашката
-            eventQueue.push(() => {
-                if (player && player.scene) showDeathNotification(player.scene, text);
-            });
-        }
+            showDeathNotification(text);
     });
 });
 
 socket.on('playerDied', ({ id }) => {
     safeEvent(() => {
         if(id == socket.id){
-
-            const scene = player.scene;
 
             deadText.setVisible(true);
             respawnButton.setVisible(true);
@@ -133,20 +112,14 @@ socket.on('playerDied', ({ id }) => {
                     username = players[id].username;
                 }
 
-                players[id].visible = false;
-                //delete players[id];
+                // bots automaticly respawn
+                if(!players[id].bot)
+                    players[id].visible = false;
             }
 
             let text = "Player " + username + " died";
-            if (sceneCreated && player && player.scene) {
-                showDeathNotification(player.scene, text);
-            } else {
-                // ако сцената не е готова, пусни събитие в опашката
-                eventQueue.push(() => {
-                    if (player && player.scene) showDeathNotification(player.scene, text);
-                });
-            }
-
+           
+            showDeathNotification(text);
         }
     });
 });
@@ -156,53 +129,36 @@ socket.on('playerRespawned', (data) => {
 
         console.log("Player respawned");
 
-        players[data.id].visible = true;
-        // new x and y position
         players[data.id].x = data.x * TILE_SIZE + TILE_SIZE / 2;
         players[data.id].y = data.y * TILE_SIZE + TILE_SIZE / 2;
+        players[data.id].visible = true;
 
         if(socket.id === data.id){
-            
-            
             player = players[socket.id];
-
-            console.log("Danni i player");
-            console.log(data);
-            console.log(player);
 
             player.gridX = data.x;
             player.gridY = data.y;
-            player.x = data.x * TILE_SIZE + TILE_SIZE / 2;
-            player.y = data.y * TILE_SIZE + TILE_SIZE / 2;
             canMove = true;
 
             gameSceneRef.cameras.main.startFollow(player);
 
-            if(respawnButton){
-                deadText.setVisible(false);
-                respawnButton.setVisible(false);
-            }
+            deadText.setVisible(false);
+            respawnButton.setVisible(false);
 
-            updateVisibleBlocks.call(gameSceneRef);
-        } //else if(players[id]){
-            //players[id].x = x * TILE_SIZE + TILE_SIZE/2;
-            //players[id].y = y * TILE_SIZE + TILE_SIZE/2;
-        //}
+            updateVisibleBlocks.call();
+        }
     });
 });
 
 
 socket.on('itemSpawned', (item) => {
     safeEvent(() => {
-
-        const scene = player.scene;
-
-        const sprite = scene.add.rectangle(
+        const sprite = gameSceneRef.add.rectangle(
             item.x * TILE_SIZE + TILE_SIZE / 2,
             item.y * TILE_SIZE + TILE_SIZE / 2,
             TILE_SIZE * 0.6,
             TILE_SIZE * 0.6,
-            item.type === "armor" ? 0x00aaff : 0xffaa00
+            item.type === "bomb" ? 0x00aaff : 0xffaa00
         );
 
         sprite.setDepth(5);
@@ -210,15 +166,11 @@ socket.on('itemSpawned', (item) => {
         sprite.itemType = item.type;
 
         items.add(sprite);
-
     });
 });
 
 socket.on('itemPicked', ({ playerId, itemId, type }) => {
     safeEvent(() => {
-
-        const scene = player.scene;
-
         const child = items.getChildren().find(c => c.itemId === itemId);
         if (child) {
             child.destroy();
@@ -232,7 +184,7 @@ socket.on('itemPicked', ({ playerId, itemId, type }) => {
                 bombPrevew = true;
             }
 
-            showDeathNotification(scene, msg);
+            showDeathNotification(msg);
         }
 
     });
@@ -304,11 +256,7 @@ export default class GameScene extends Phaser.Scene {
 
     create() {
         // animations
-
-        //console.log("Gamescene created!!!");
         gameSceneRef = this;
-
-
         const framerate = 20;
         this.anims.create({
             key: 'walk-right',
@@ -343,33 +291,6 @@ export default class GameScene extends Phaser.Scene {
         mapGraphics.setDepth(-1); // да е зад всички обекти
         mapGraphics.setScrollFactor(1);
 
-        //player = this.add.rectangle(0, 0, TILE_SIZE - 6, TILE_SIZE - 6, 0xbbbbbb);
-
-        /*
-        player = this.add.sprite(
-            0,
-            0,
-            'player',
-            0
-        );
-        player.displayWidth = TILE_SIZE;
-        player.displayHeight = TILE_SIZE;
-
-        player.gridX = 0;
-        player.gridY = 0;
-        player.x = player.gridX * TILE_SIZE + TILE_SIZE / 2;
-        player.y = player.gridY * TILE_SIZE + TILE_SIZE / 2;
-
-        this.physics.add.existing(player);
-        player.body.setCollideWorldBounds(true);
-
-        cursors = this.input.keyboard.addKeys({
-            up: 'W',
-            down: 'S',
-            left: 'A',
-            right: 'D'
-        });*/
-
         this.input.keyboard.on('keydown-A', () => { heldLeft = true; });
         this.input.keyboard.on('keyup-A', () => { heldLeft = false; });
 
@@ -386,14 +307,7 @@ export default class GameScene extends Phaser.Scene {
         this.input.keyboard.on('keyup-SPACE', () => { heldSpace = false; });
 
         bombs = this.add.group();
-        /*this.input.keyboard.on('keydown-SPACE', () => {
-            placeBomb.call(this);
-        });*/
         items = this.add.group();
-
-        //this.cameras.main.startFollow(player);
-        this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
-        this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
         // Light
         this.darkness = this.make.renderTexture({
@@ -415,19 +329,12 @@ export default class GameScene extends Phaser.Scene {
         visibleBlocks = this.physics.add.staticGroup();
         this.renderedCells = new Set();
 
-        // TODO fix collider
-        //this.physics.add.collider(this.player, this.visibleBlocks);
         this.cursors = this.input.keyboard.createCursorKeys();
 
-        // Raycaster
-        this.raycaster = this.raycasterPlugin.createRaycaster();
-        //this.raycaster.setBoundingBox(0, 0, this.worldCols * this.gridSize, this.worldRows * this.gridSize);
-        this.ray = this.raycaster.createRay({ origin: this.player, autoSlice: true });
-
         this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
-        createLightGradientTexture(this);
+        createLightGradientTexture();
 
-        updateVisibleBlocks(this);
+        updateVisibleBlocks();
 
         respawnButton = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 100, 'Respawn', {
             fontFamily: 'Arial',
@@ -500,17 +407,17 @@ export default class GameScene extends Phaser.Scene {
 }
 
 function updateLightGradient() {
-        this.darkness.clear();
-        this.darkness.fill(0x000000, 1);
+    this.darkness.clear();
+    this.darkness.fill(0x000000, 1);
 
-        const camView = this.cameras.main.worldView;
-        const playerCamX = player.x - camView.x + this.cameras.main.width;
-        const playerCamY = player.y - camView.y + this.cameras.main.height;
+    const camView = this.cameras.main.worldView;
+    const playerCamX = player.x - camView.x + this.cameras.main.width;
+    const playerCamY = player.y - camView.y + this.cameras.main.height;
 
-        const light = this.add.image(playerCamX, playerCamY, 'lightGradient').setScale(2).setAlpha(1);
-        this.darkness.erase(light);
-        light.destroy();
-    }
+    const light = this.add.image(playerCamX, playerCamY, 'lightGradient').setScale(2).setAlpha(1);
+    this.darkness.erase(light);
+    light.destroy();
+}
 
 function updateVisibleBlocks() {
     const radius = 10;
@@ -559,7 +466,7 @@ function updateVisibleBlocks() {
         }
     }
 
-    //if(!this || !this.raycaster) return;
+    if(!this || !this.raycaster) return;
 
     for (const key in blocksMap) {
         const [bx, by] = key.split('_').map(Number);
@@ -572,9 +479,10 @@ function updateVisibleBlocks() {
 }
 
 function updateRaycaster() {
+    if(!player) return;
+
+    gameSceneRef.ray.setOrigin(player.x, player.y);
     
-    this.raycaster.mapGameObjects(visibleBlocks.getChildren(), true);
-    this.ray.setOrigin(player.x, player.y);
     const intersections = this.ray.castCircle();
 
     this.lightGraphics.clear();
@@ -590,7 +498,7 @@ function updateRaycaster() {
     const toX = cam.width + buffer * 2;
     const toY = cam.height + buffer * 2;
 
-    this.raycaster.setBoundingBox(fromX , fromY, toX, toY);
+    gameSceneRef.raycaster.setBoundingBox(fromX , fromY, toX, toY);
 }
 
 function tryMove(dx, dy) {
@@ -649,7 +557,7 @@ function tryMove(dx, dy) {
                     player.setFrame(1);
                 
                 checkItemPickup();
-                updateVisibleBlocks.call(gameSceneRef);
+                updateVisibleBlocks.call();
             }
         });
 
@@ -792,83 +700,78 @@ socket.on('bombPlaced', ({ id, x, y }) => {
 
 socket.on('bombExploded', ({ x, y, affected }) => {
     safeEvent(() => {
+        const children = [...bombs.getChildren()];
+        for (const bomb of children) {
+            const bx = Math.floor((bomb.x - TILE_SIZE / 2) / TILE_SIZE);
+            const by = Math.floor((bomb.y - TILE_SIZE / 2) / TILE_SIZE);
 
-    const scene = gameSceneRef;
-
-    const children = [...bombs.getChildren()];
-    for (const bomb of children) {
-        const bx = Math.floor((bomb.x - TILE_SIZE / 2) / TILE_SIZE);
-        const by = Math.floor((bomb.y - TILE_SIZE / 2) / TILE_SIZE);
-
-        if (affected.some(cell => cell.x === bx && cell.y === by)) {
-            bombs.remove(bomb, true, true);
+            if (affected.some(cell => cell.x === bx && cell.y === by)) {
+                bombs.remove(bomb, true, true);
+            }
         }
-    }
 
-    affected.forEach(({ x, y }) => {
-        const cx = x * TILE_SIZE + TILE_SIZE / 2;
-        const cy = y * TILE_SIZE + TILE_SIZE / 2;
+        affected.forEach(({ x, y }) => {
+            const cx = x * TILE_SIZE + TILE_SIZE / 2;
+            const cy = y * TILE_SIZE + TILE_SIZE / 2;
 
-        const explosion = scene.add.image(cx, cy, 'explosionGradient');
-        explosion.setDepth(110);
-        explosion.setScale(0.5);
-        explosion.setAlpha(1);
+            const explosion = gameSceneRef.add.image(cx, cy, 'explosionGradient');
+            explosion.setDepth(110);
+            explosion.setScale(0.5);
+            explosion.setAlpha(1);
 
-        scene.tweens.add({
-            targets: explosion,
-            scaleX: 1.5,
-            scaleY: 1.5,
-            alpha: 0,
-            duration: 500,
-            ease: 'Cubic.easeOut',
-            onComplete: () => {
-                explosion.destroy();
+            gameSceneRef.tweens.add({
+                targets: explosion,
+                scaleX: 1.5,
+                scaleY: 1.5,
+                alpha: 0,
+                duration: 500,
+                ease: 'Cubic.easeOut',
+                onComplete: () => {
+                    explosion.destroy();
+                }
+            });
+
+            if (isInsideGrid(x, y) && grid[y][x] === 1) {
+                grid[y][x] = 0;
+
+                const key = `${x}_${y}`;
+                const block = blocksMap[key];
+
+                if (block) {
+                    gameSceneRef.tweens.add({
+                        targets: block,
+                        tint: 0xff5555,
+                        scaleX: 0.8,
+                        scaleY: 0.8,
+                        alpha: 0,
+                        duration: 200,
+                        ease: 'Cubic.easeIn',
+                        onComplete: () => {
+                            gameSceneRef.raycaster.removeMappedObjects(block);
+                            block.destroy();
+                            delete blocksMap[key];
+                        }
+                    });
+                }
+            }
+            // remove prevew
+            for (const bomb of children) {
+                const bx = Math.floor((bomb.x - TILE_SIZE / 2) / TILE_SIZE);
+                const by = Math.floor((bomb.y - TILE_SIZE / 2) / TILE_SIZE);
+
+                if (affected.some(cell => cell.x === bx && cell.y === by)) {
+                    if (bomb.previewTiles) {
+                        bomb.previewTiles.forEach(tile => tile.destroy());
+                        bomb.previewTiles = [];
+                    }
+                    bombs.remove(bomb, true, true);
+                }
             }
         });
-
-        if (isInsideGrid(x, y) && grid[y][x] === 1) {
-            grid[y][x] = 0;
-
-            const key = `${x}_${y}`;
-            const block = blocksMap[key];
-
-            if (block) {
-                scene.tweens.add({
-                    targets: block,
-                    tint: 0xff5555,
-                    scaleX: 0.8,
-                    scaleY: 0.8,
-                    alpha: 0,
-                    duration: 200,
-                    ease: 'Cubic.easeIn',
-                    onComplete: () => {
-                        scene.raycaster.removeMappedObjects(block);
-                        block.destroy();
-                        delete blocksMap[key];
-                    }
-                });
-            }
-        }
-       
-    });
-
-    // remove prevew
-    for (const bomb of children) {
-        const bx = Math.floor((bomb.x - TILE_SIZE / 2) / TILE_SIZE);
-        const by = Math.floor((bomb.y - TILE_SIZE / 2) / TILE_SIZE);
-
-        if (affected.some(cell => cell.x === bx && cell.y === by)) {
-            if (bomb.previewTiles) {
-                bomb.previewTiles.forEach(tile => tile.destroy());
-                bomb.previewTiles = [];
-            }
-            bombs.remove(bomb, true, true);
-        }
-    }
     });
 });
 
-function createLightGradientTexture(scene) {
+function createLightGradientTexture() {
     const size = 160;
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -884,29 +787,25 @@ function createLightGradientTexture(scene) {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
 
-    scene.textures.addBase64('explosionGradient', canvas.toDataURL());
+    gameSceneRef.textures.addBase64('explosionGradient', canvas.toDataURL());
 }
 
-function addOtherPlayer(data) {
-    console.log("Add player");
-    console.log(data);
-
-    const other = gameSceneRef.add.sprite(
+function addPlayer(data) {
+    const p = gameSceneRef.add.sprite(
         data.x * TILE_SIZE + TILE_SIZE / 2,
         data.y * TILE_SIZE + TILE_SIZE / 2,
         'player',
         0
     );
-    other.displayWidth = TILE_SIZE;
-    other.displayHeight = TILE_SIZE;
-    other.username = data.username;
+    p.displayWidth = TILE_SIZE;
+    p.displayHeight = TILE_SIZE;
+    p.username = data.username;
+    p.bot = data.bot;
 
     if(!data.alive)
-        other.visible = false;
+        p.visible = false;
 
-    console.log(data);
-
-    players[data.id] = other;
+    players[data.id] = p;
 }
 
 
@@ -946,8 +845,8 @@ function previewExplosion(x, y) {
     });
 }
 
-function showDeathNotification(scene, text) {
-    const txt = scene.add.text(NOTIF_X, NOTIF_Y + deathNotifications.length * NOTIF_SPACING, text, {
+function showDeathNotification(text) {
+    const txt = gameSceneRef.add.text(NOTIF_X, NOTIF_Y + deathNotifications.length * NOTIF_SPACING, text, {
         font: '20px Arial',
         fill: '#ff4444',
         stroke: '#000000',
@@ -963,20 +862,20 @@ function showDeathNotification(scene, text) {
 
     deathNotifications.push(entry);
 
-    entry.timeout = scene.time.delayedCall(NOTIF_DURATION, () => {
-        entry.fadeTween = scene.tweens.add({
+    entry.timeout = gameSceneRef.time.delayedCall(NOTIF_DURATION, () => {
+        entry.fadeTween = gameSceneRef.tweens.add({
             targets: entry.textObj,
             alpha: 0,
             duration: NOTIF_FADE_DURATION,
             ease: 'Cubic.easeIn',
             onComplete: () => {
-                removeDeathNotification(scene, entry);
+                removeDeathNotification(entry);
             }
         });
     });
 }
 
-function removeDeathNotification(scene, entry) {
+function removeDeathNotification(entry) {
     const idx = deathNotifications.indexOf(entry);
     if (idx === -1) return;
 
@@ -988,7 +887,7 @@ function removeDeathNotification(scene, entry) {
 
     for (let i = idx; i < deathNotifications.length; i++) {
         const targetY = NOTIF_Y + i * NOTIF_SPACING;
-        scene.tweens.add({
+        gameSceneRef.tweens.add({
             targets: deathNotifications[i].textObj,
             y: targetY,
             duration: 200,
