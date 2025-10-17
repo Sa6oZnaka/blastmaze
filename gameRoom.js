@@ -1,5 +1,5 @@
 //const { Server } = require('socket.io');
-
+const gameRooms = require('./gameRooms');
 
 module.exports = function (io){
 
@@ -58,25 +58,46 @@ module.exports = function (io){
         console.log(`New connection: ${socket.id}`);
         const sess = socket.handshake.session;
 
-        const mapData = { grid, width: grid[0].length, height: grid.length };
-        players[socket.id] = { 
-            id: socket.id, 
-            x: 0, 
-            y: 0, 
-            bot: false,
-            username: sess.user.username,
-            alive: true 
-        };
 
-        socket.emit('mapData', mapData);
-        socket.emit('currentPlayers', players);
-        socket.broadcast.emit('playerJoined', players[socket.id]);
+        socket.on('findGame', ({ wantBots }) => {
+            const room = gameRooms.findOrCreateRoom(wantBots);
+            socket.join(room.id);
+
+            const player = {
+                id: socket.id,
+                x: 0,
+                y: 0,
+                bot: false,
+                username: socket.handshake.session.user.username,
+                alive: true
+            };
+
+            gameRooms.addPlayerToRoom(room, player);
+
+            // Изпращаме данни за стаята на този клиент
+            socket.emit('roomData', {
+                roomId: room.id,
+                grid: room.grid,
+                players: room.players,
+                items: room.items,
+                bombs: room.bombs
+            });
+
+            console.log(`Connected: ${socket.id} (room ${room.id})`);
+
+            // Известяване на другите играчи в стаята
+            socket.to(room.id).emit('playerJoined', player);
+        });
+
 
         socket.on('move', ({ dx, dy }) => {
-            const player = players[socket.id];
+            const room = gameRooms.findRoomByPlayer(socket.id);
+            if (!room) return;
+
+            const player = room.players[socket.id];
             if (!player) return;
             
-            if(isCellBlocked(player.x + dx, player.y + dy)){
+            if(gameRooms.isCellBlocked(room.id, player.x + dx, player.y + dy)){
                 socket.emit("revertMove", ({x: player.x, y: player.y}));
                 return;
             }
@@ -84,43 +105,78 @@ module.exports = function (io){
             player.x += dx;
             player.y += dy;
 
-            io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
+            io.to(room.id).emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
         });
 
         socket.on('respawn', () => {
+            const room = gameRooms.findRoomByPlayer(socket.id);
+            if (!room) return;
 
-            players[socket.id].y = Math.floor(Math.random() * grid[0].length);
-            players[socket.id].y = Math.floor(Math.random() * grid.length);
-
-            players[socket.id].alive = true;
-
-            io.emit('playerRespawned', players[socket.id]);
-        });
-
-        socket.on('placeBomb', () => placeBomb(socket.id));
-
-        socket.on('pickupItem', ({ itemId }) => {
-            const player = players[socket.id];
+            const player = room.players[socket.id];
             if (!player) return;
 
-            const idx = items.findIndex(it => it.id === itemId);
+            player.y = Math.floor(Math.random() * grid[0].length);
+            player.y = Math.floor(Math.random() * grid.length);
+            player.alive = true;
+
+            io.to(room.id).emit('playerRespawned', player);
+        });
+
+        
+        socket.on('placeBomb', () => {
+            const room = gameRooms.findRoomByPlayer(socket.id);
+            if (!room) return;
+
+            const player = room.players[socket.id];
+            if (!player) return;
+
+            const bombX = player.x;
+            const bombY = player.y;
+            
+            const exists = room.bombs.some(b => b.bombX === bombX && b.bombY === bombY);
+            if (exists) return;
+
+            const explodeAt = Date.now() + 3000;
+            const timer = setTimeout(() => explodeBomb(room.id, bombX, bombY), 3000);
+
+            //addBombToRoom()
+            room.bombs.push({ bombX, bombY, timer, explodeAt });
+            io.to(room.id).emit('bombPlaced', { id: "ne znam", x: bombX, y: bombY });
+        });
+
+        socket.on('pickupItem', ({ itemId }) => {
+            const room = gameRooms.findRoomByPlayer(socket.id);
+            if (!room) return;
+            const player = room.players[socket.id];
+            if (!player) return;
+
+            const idx = room.items.findIndex(it => it.id === itemId);
             if (idx === -1) return;
 
-            const item = items[idx];
+            const item = room.items[idx];
             if (player.x === item.x && player.y === item.y) {
-                items.splice(idx, 1);
-                io.emit('itemPicked', { playerId: socket.id, itemId: item.id, type: item.type });
+                room.items.splice(idx, 1);
+                io.to(room.id).emit('itemPicked', { playerId: socket.id, itemId: item.id, type: item.type });
             }
         });
 
-
         socket.on('disconnect', () => {
-            console.log(`Disconnected: ${socket.id}`);
-            delete players[socket.id];
-            io.emit('playerLeft', { id: socket.id });
+            const room = gameRooms.findRoomByPlayer(socket.id);
+            if (!room) return;
+
+            delete room.players[socket.id];
+            io.to(room.id).emit('playerLeft', { id: socket.id });
+
+            // ако няма никой останал в стаята, може да я изтриеш
+            //if (Object.keys(room.players).length === 0) {
+            //    gameRooms.removeRoom(room.id);
+            //}
+
+            console.log(`Disconnected: ${socket.id} (room ${room.id})`);
         });
     });
 
+    // todo
     // ===== BOTS =====
     function addBot(id, x, y) {
         players[id] = { id, x, y, bot: true, escaping: false, escapePath: null, alive: true, username: id };
@@ -198,21 +254,6 @@ module.exports = function (io){
         bot.x = newX;
         bot.y = newY;
         io.emit('playerMoved', { id: bot.id, x: bot.x, y: bot.y });
-    }
-
-    function placeBomb(id) {
-        const player = players[id];
-        if (!player) return;
-        const bombX = player.x;
-        const bombY = player.y;
-        const exists = bombs.some(b => b.bombX === bombX && b.bombY === bombY);
-        if (exists) return;
-
-        const explodeAt = Date.now() + 3000;
-        const timer = setTimeout(() => explodeBomb(bombX, bombY), 3000);
-
-        bombs.push({ bombX, bombY, timer, explodeAt });
-        io.emit('bombPlaced', { id, x: bombX, y: bombY });
     }
 
     function aStar(sx, sy, ex, ey) {
@@ -312,7 +353,12 @@ module.exports = function (io){
         return aff;
     }
 
-    function checkPlayersInExplosion(aff) {
+    function checkPlayersInExplosion(roomId, aff) {
+
+        var room = gameRooms.getRoom(roomId);
+        if(!room) return;
+
+        let players = room.players;
         for (const id in players) {
             const p = players[id];
             if (aff.has(`${p.x},${p.y}`)) {
@@ -333,44 +379,14 @@ module.exports = function (io){
     }
 
 
-    function explodeBomb(bx, by) {
-        const aff = collectExplosion(bx, by);
+    function explodeBomb(roomId, bx, by) {
+        const aff = gameRooms.collectExplosion(roomId, bx, by);
         const arr = [...aff].map(s => {
             const [x, y] = s.split(',').map(Number);
             return { x, y };
         });
         io.emit('bombExploded', { x: bx, y: by, affected: arr });
-        checkPlayersInExplosion(aff);
-    }
-
-    function collectExplosion(bx, by, aff = new Set()) {
-        const idx = bombs.findIndex(b => b.bombX === bx && b.bombY === by);
-        if (idx !== -1) { clearTimeout(bombs[idx].timer); bombs.splice(idx, 1); }
-        aff.add(`${bx},${by}`);
-        grid[by][bx] = 0;
-        for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
-            for (let s = 1; s <= BOMB_RADIUS; s++) {
-                const nx = bx + dx * s, ny = by + dy * s;
-                if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) break;
-                if (grid[ny][nx] === 1) { 
-                    grid[ny][nx] = 0; 
-                    aff.add(`${nx},${ny}`); 
-
-                    if(DROP_ENABLED){
-                        if (Math.random() < DROP_CHANCE) {
-                            spawnItem(nx, ny);
-                        }
-                    }
-                    
-                    break; 
-                }
-                else if (grid[ny][nx] === 0) aff.add(`${nx},${ny}`);
-                else break;
-            }
-        }
-        const chain = bombs.filter(b => aff.has(`${b.bombX},${b.bombY}`));
-        chain.forEach(b => { clearTimeout(b.timer); collectExplosion(b.bombX, b.bombY, aff); });
-        return aff;
+        checkPlayersInExplosion(roomId, aff);
     }
 
     function spawnItem(x, y) {
@@ -386,5 +402,3 @@ module.exports = function (io){
 
     //return server;
 }
-
-//module.exports = { createServer };

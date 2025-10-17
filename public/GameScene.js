@@ -27,8 +27,7 @@ let bombPrevew = false;
 let respawnButton;
 let deadText;
 
-let socket;
-socket = io();
+import socket from './socket.js';
 // map
 socket.on('mapData', (mapData) => {
     safeEvent(() => {
@@ -207,6 +206,41 @@ export default class GameScene extends Phaser.Scene {
 
     constructor() {
         super({ key: 'GameScene' });
+    }
+
+    init(data) {
+        safeEvent(() => {
+
+            let roomData = data.roomData;
+
+            // map data
+            grid = roomData.grid;
+            GRID_WIDTH = grid[0].length;
+            GRID_HEIGHT = grid.length;
+
+            //items
+            items = roomData.items;
+            // todo draw items function
+
+            // players
+            for (const id in roomData.players) {
+
+                if (id !== socket.id) {
+                    addPlayer(roomData.players[id]);
+                }else{
+                    addPlayer(roomData.players[id]);
+                    player = players[id];
+
+                    player.gridX = 0;
+                    player.gridY = 0;
+                    canMove = true;
+
+                    gameSceneRef.cameras.main.startFollow(player);
+
+                    updateVisibleBlocks.call(gameSceneRef);
+                }
+            }
+        });
     }
 
     preload() {
@@ -501,6 +535,8 @@ function updateVisibleBlocks() {
 
 function updateRaycaster() {
     
+    if(!player) return;
+
     this.raycaster.mapGameObjects(visibleBlocks.getChildren(), true);
     this.ray.setOrigin(player.x, player.y);
     const intersections = this.ray.castCircle();

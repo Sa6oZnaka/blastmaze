@@ -1,5 +1,7 @@
 const http = new XMLHttpRequest();
 
+import socket from './socket.js';
+
 export default class MenuScene extends Phaser.Scene {
     constructor() {
         super({ key: 'MenuScene' });
@@ -10,22 +12,30 @@ export default class MenuScene extends Phaser.Scene {
     }
 
     create() {
-       
         this.graphics = this.add.graphics();
         this.getUser();
 
         const startText = this.add.text(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY,
-        'Start Game',
-        { fontSize: '32px', fill: '#fff' }
+            this.cameras.main.centerX,
+            this.cameras.main.centerY,
+            'Start Game',
+            { fontSize: '32px', fill: '#fff' }
         ).setOrigin(0.5);
 
         startText.setInteractive();
         startText.on('pointerdown', () => {
-        this.scene.start('GameScene');
+
+            // пращаме заявка към сървъра
+            socket.emit('findGame', { wantBots: false });
+
+            // слушаме отговора за стаята
+            socket.once('roomData', (roomData) => {
+                // запазваме данните, за да ги ползваме в GameScene
+                this.scene.start('GameScene', { roomData });
+            });
         });
     }
+
 
     update() {
        
