@@ -89,7 +89,9 @@ module.exports = function (io){
 
         socket.on('respawn', () => {
 
-            players[socket.id].y = 5;
+            players[socket.id].y = Math.floor(Math.random() * grid[0].length);
+            players[socket.id].y = Math.floor(Math.random() * grid.length);
+
             players[socket.id].alive = true;
 
             io.emit('playerRespawned', players[socket.id]);
@@ -121,7 +123,7 @@ module.exports = function (io){
 
     // ===== BOTS =====
     function addBot(id, x, y) {
-        players[id] = { id, x, y, bot: true, escaping: false, escapePath: null, alive: true };
+        players[id] = { id, x, y, bot: true, escaping: false, escapePath: null, alive: true, username: id };
         io.emit('playerJoined', players[id]);
     }
 
@@ -318,7 +320,7 @@ module.exports = function (io){
                     if(!p.alive) return;// already dead
 
                     players[id].alive = false;
-                    io.to(id).emit('playerDied', {id});
+                    //io.to(id).emit('playerDied', {id});
                 } else {
                     // bot
                     p.x = Math.floor(Math.random() * grid[0].length);

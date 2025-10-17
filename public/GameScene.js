@@ -54,13 +54,8 @@ socket.on('currentPlayers', (serverPlayers) => {
                 canMove = true;
 
                 gameSceneRef.cameras.main.startFollow(player);
-                gameSceneRef.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
-                gameSceneRef.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
-                gameSceneRef.raycaster = gameSceneRef.raycasterPlugin.createRaycaster();
-                gameSceneRef.ray = gameSceneRef.raycaster.createRay({ origin: player, autoSlice: true });
-
-                updateVisibleBlocks.call();
+                updateVisibleBlocks.call(gameSceneRef);
             }
         }
     };
@@ -98,37 +93,28 @@ socket.on('playerLeft', ({ id }) => {
 
 socket.on('playerDied', ({ id }) => {
     safeEvent(() => {
-        if(id == socket.id){
+        if(!players[id])
+            return;
 
+        showDeathNotification( "Player " + players[id].username + " died");
+
+        if(players[id].bot)
+            return;
+
+        players[id].visible = false;
+
+        if(id == socket.id){
             deadText.setVisible(true);
             respawnButton.setVisible(true);
 
             bombPrevew = false;
             canMove = false;
-        }else{
-            var username = id;
-            if (players[id]) {
-                if(players[id].username){
-                    username = players[id].username;
-                }
-
-                // bots automaticly respawn
-                if(!players[id].bot)
-                    players[id].visible = false;
-            }
-
-            let text = "Player " + username + " died";
-           
-            showDeathNotification(text);
         }
     });
 });
 
 socket.on('playerRespawned', (data) => {
     safeEvent(() => {
-
-        console.log("Player respawned");
-
         players[data.id].x = data.x * TILE_SIZE + TILE_SIZE / 2;
         players[data.id].y = data.y * TILE_SIZE + TILE_SIZE / 2;
         players[data.id].visible = true;
@@ -309,7 +295,11 @@ export default class GameScene extends Phaser.Scene {
         bombs = this.add.group();
         items = this.add.group();
 
+        this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+        this.physics.world.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+
         // Light
+        createLightSystem(this);
         this.darkness = this.make.renderTexture({
             width: this.cameras.main.width * 2,
             height: this.cameras.main.height * 2,
@@ -317,6 +307,15 @@ export default class GameScene extends Phaser.Scene {
         });
         this.darkness.setDepth(10);
         this.darkness.setScrollFactor(0);
+
+        this.tweens.add({
+            targets: this.lightImage,
+            scale: { from: 1.9, to: 2.1 },
+            duration: 1000,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
 
         this.fpsText = this.add.text(10, 10, '', {
             font: '16px Arial',
@@ -331,10 +330,14 @@ export default class GameScene extends Phaser.Scene {
 
         this.cursors = this.input.keyboard.createCursorKeys();
 
-        this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
-        createLightGradientTexture();
+        // Raycaster
+        this.raycaster = this.raycasterPlugin.createRaycaster();
+        this.ray = this.raycaster.createRay({ origin: this.player, autoSlice: true });
 
-        updateVisibleBlocks();
+        this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
+        createLightGradientTexture(this);
+
+        updateVisibleBlocks(this);
 
         respawnButton = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 100, 'Respawn', {
             fontFamily: 'Arial',
@@ -406,7 +409,26 @@ export default class GameScene extends Phaser.Scene {
     }
 }
 
+function createLightSystem(scene) {
+    // Създай darkness слой
+    scene.darkness = scene.make.renderTexture({
+        width: scene.cameras.main.width * 2,
+        height: scene.cameras.main.height * 2,
+        add: true
+    });
+    scene.darkness.setDepth(10);
+    scene.darkness.setScrollFactor(0);
+
+    // Създай светлинното изображение само веднъж
+    scene.lightImage = scene.add.image(0, 0, 'lightGradient')
+        .setScale(2)
+        .setAlpha(1)
+        .setVisible(false); // няма нужда да е визуално в сцената
+}
+
 function updateLightGradient() {
+    if (!player || !this.lightImage || !this.darkness) return;
+
     this.darkness.clear();
     this.darkness.fill(0x000000, 1);
 
@@ -414,9 +436,8 @@ function updateLightGradient() {
     const playerCamX = player.x - camView.x + this.cameras.main.width;
     const playerCamY = player.y - camView.y + this.cameras.main.height;
 
-    const light = this.add.image(playerCamX, playerCamY, 'lightGradient').setScale(2).setAlpha(1);
-    this.darkness.erase(light);
-    light.destroy();
+    this.lightImage.setPosition(playerCamX, playerCamY);
+    this.darkness.erase(this.lightImage);
 }
 
 function updateVisibleBlocks() {
@@ -479,10 +500,9 @@ function updateVisibleBlocks() {
 }
 
 function updateRaycaster() {
-    if(!player) return;
-
-    gameSceneRef.ray.setOrigin(player.x, player.y);
     
+    this.raycaster.mapGameObjects(visibleBlocks.getChildren(), true);
+    this.ray.setOrigin(player.x, player.y);
     const intersections = this.ray.castCircle();
 
     this.lightGraphics.clear();
@@ -498,7 +518,7 @@ function updateRaycaster() {
     const toX = cam.width + buffer * 2;
     const toY = cam.height + buffer * 2;
 
-    gameSceneRef.raycaster.setBoundingBox(fromX , fromY, toX, toY);
+    this.raycaster.setBoundingBox(fromX , fromY, toX, toY);
 }
 
 function tryMove(dx, dy) {
@@ -557,7 +577,7 @@ function tryMove(dx, dy) {
                     player.setFrame(1);
                 
                 checkItemPickup();
-                updateVisibleBlocks.call();
+                updateVisibleBlocks.call(gameSceneRef);
             }
         });
 
