@@ -1,15 +1,7 @@
-//const { Server } = require('socket.io');
 const gameRooms = require('./gameRooms');
 
 module.exports = function (io){
 
-//function createServer({ botsEnabled = true } = {}) {
-
-
-    //const io = new Server(server);
-    const grid = generateRandomMap(81, 50);
-    const players = {};
-    const bombs = []; // { bombX, bombY, timer, explodeAt }
 
     const items = []; // { id, x, y, type }
     let itemIdCounter = 0;
@@ -21,26 +13,6 @@ module.exports = function (io){
     let DROP_ENABLED = true;
     let DROP_CHANCE = 0.02;
     let BOMB_CLIPPING = true;
-    let BOMB_RADIUS = 3;
-
-    function generateRandomMap(rows = 81, cols = 50) {
-        const grid = [];
-        for (let y = 0; y < rows; y++) {
-            const row = [];
-            for (let x = 0; x < cols; x++) {
-                if ((y === 0 && x === 0) || (y === 0 && x === 1) || (y === 1 && x === 0)) {
-                    row.push(0);
-                } else {
-                    const r = Math.random();
-                    if (r < 0.05) row.push(2); // indestructible
-                    else if (r < 0.2) row.push(1); // destructible
-                    else row.push(0); // empty
-                }
-            }
-            grid.push(row);
-        }
-        return grid;
-    }
 
     io.use((socket, next) => {
         const sess = socket.handshake.session;
@@ -59,8 +31,8 @@ module.exports = function (io){
         const sess = socket.handshake.session;
 
 
-        socket.on('findGame', ({ wantBots }) => {
-            const room = gameRooms.findOrCreateRoom(wantBots);
+        socket.on('findGame', ({ mode }) => {
+            const room = gameRooms.findOrCreateRoom(mode);
             socket.join(room.id);
 
             const player = {
@@ -115,8 +87,8 @@ module.exports = function (io){
             const player = room.players[socket.id];
             if (!player) return;
 
-            player.y = Math.floor(Math.random() * grid[0].length);
-            player.y = Math.floor(Math.random() * grid.length);
+            player.y = Math.floor(Math.random() * room.grid[0].length);
+            player.y = Math.floor(Math.random() * room.grid.length);
             player.alive = true;
 
             io.to(room.id).emit('playerRespawned', player);
@@ -178,85 +150,135 @@ module.exports = function (io){
 
     // todo
     // ===== BOTS =====
-    function addBot(id, x, y) {
-        players[id] = { id, x, y, bot: true, escaping: false, escapePath: null, alive: true, username: id };
-        io.emit('playerJoined', players[id]);
+    function addBotToRoom(room, id, x, y) {
+        const bot = { id, x, y, bot: true, escaping: false, escapePath: null, alive: true, username: id };
+        room.players[id] = bot;
+        io.to(room.id).emit('playerJoined', bot);
     }
 
+/*
     if(BOT_ENABLED){
         addBot("bot1", 5, 5);
         addBot("bot2", 10, 10);
     }
-
+*/
     setInterval(() => {
-        for (const id in players) {
-            const p = players[id];
-            if (!p.bot) continue;
-            if (!players[id]) continue;
+        const allRooms = Object.values(gameRooms); // но при теб е module, не директно обект
+        const rooms = Object.values(require('./gameRooms').getAllRooms ? gameRooms.getAllRooms() : require('./gameRooms').rooms || {});
 
-            // ако е в режим бягство
-            if (p.escaping) {
-                if (!isCellDangerous(p.x, p.y)) {
-                    p.escaping = false;
-                    p.escapePath = null;
+        for (const room of rooms) {
+            const grid = room.grid;
+            const bombs = room.bombs;
+
+            for (const id in room.players) {
+                const p = room.players[id];
+                if (!p.bot || !p.alive) continue;
+
+                // === ESCAPING ===
+                if (p.escaping) {
+                    if (!isCellDangerous(room, p.x, p.y)) {
+                        p.escaping = false;
+                        p.escapePath = null;
+                        continue;
+                    }
+                    if (!p.escapePath || p.escapePath.length <= 1) {
+                        p.escapePath = findSafePath(room, p.x, p.y);
+                    }
+                    if (p.escapePath && p.escapePath.length > 1) {
+                        const next = p.escapePath[1];
+                        moveBot(room, p, next.x, next.y);
+                        p.escapePath = p.escapePath.slice(1);
+                    } else {
+                        const step = findAnySafeNeighbor(room, p.x, p.y);
+                        if (step) moveBot(room, p, step.x, step.y);
+                    }
                     continue;
                 }
-                if (!p.escapePath || p.escapePath.length <= 1) {
-                    p.escapePath = findSafePath(p.x, p.y);
-                }
-                if (p.escapePath && p.escapePath.length > 1) {
-                    const next = p.escapePath[1];
-                    moveBot(p, next.x, next.y);
-                    p.escapePath = p.escapePath.slice(1);
-                } else {
-                    const step = findAnySafeNeighbor(p.x, p.y);
-                    if (step) moveBot(p, step.x, step.y);
-                }
-                continue;
-            }
 
-            else if (isCellDangerous(p.x, p.y)) {
-                p.escaping = true;
-                p.escapePath = findSafePath(p.x, p.y);
-                if (p.escapePath && p.escapePath.length > 1) {
-                    const next = p.escapePath[1];
-                    moveBot(p, next.x, next.y);
-                    p.escapePath = p.escapePath.slice(1);
-                } else {
-                    const step = findAnySafeNeighbor(p.x, p.y);
-                    if (step) moveBot(p, step.x, step.y);
+                // === CHECK DANGER ===
+                else if (isCellDangerous(room, p.x, p.y)) {
+                    p.escaping = true;
+                    p.escapePath = findSafePath(room, p.x, p.y);
+                    continue;
                 }
-                continue;
-            }else{
 
-                const target = findNearestPlayer(p);
+                // === HUNT PLAYERS ===
+                const target = findNearestPlayer(room, p);
                 if (!target) continue;
-                const path = aStar(p.x, p.y, target.x, target.y);
+
+                // ако е много близо — опитваме да сложим бомба
+                const dist = Math.abs(p.x - target.x) + Math.abs(p.y - target.y);
+                // условияхe: ако е на съседна или на две клетки — може да опита да сложи
+                if (dist <= 2) {
+                    // допълнителна безопасност: не слагай ако собственото място вече е опасно и няма escape path
+                    if (canBotPlaceBomb(room, p)) {
+                        // Ако ботът би се самоубил (няма път за бягство), може да се отказваме — но тук ще опитаме да намерим път
+                        const potentialEscape = findSafePath(room, p.x, p.y);
+                        if (potentialEscape) {
+                            botPlaceBomb(room, p);
+                            // продължаваме към следващия бот (вече маркиран като escaping)
+                            continue;
+                        } else {
+                            // ако няма безопасен път, може да опитаме да преместим бота на съседна безопасна клетка, вместо да поставяме
+                            const step = findAnySafeNeighbor(room, p.x, p.y);
+                            if (step) {
+                                moveBot(room, p, step.x, step.y);
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                const path = aStar(room, p.x, p.y, target.x, target.y);
                 if (path && path.length > 1) {
                     const step = path[1];
-
-                    if(isCellDangerous(step.x, step.y)) return;
-
-                    moveBot(p, step.x, step.y);
-
-                    if(PEACEFUL_BOTS) return;
-
-                    if (step.x === target.x && step.y === target.y) {
-                        placeBomb(p.id);
-                    }
+                    if (isCellDangerous(room, step.x, step.y)) continue;
+                    moveBot(room, p, step.x, step.y);
                 }
             }
         }
-    }, 200);
+    }, 250);
 
-    function moveBot(bot, newX, newY) {
-        if (isCellBlocked(newX, newY)) return;
-        bot.x = newX;
-        bot.y = newY;
-        io.emit('playerMoved', { id: bot.id, x: bot.x, y: bot.y });
+    function botPlaceBomb(room, bot) {
+        const bombX = bot.x;
+        const bombY = bot.y;
+
+        // Проверка дали вече има бомба на същото място
+        const exists = room.bombs.some(b => b.bombX === bombX && b.bombY === bombY);
+        if (exists) return false;
+
+        const explodeAt = Date.now() + 3000;
+
+        const timer = setTimeout(() => explodeBomb(room.id, bombX, bombY), 3000);
+
+        room.bombs.push({ bombX, bombY, timer, explodeAt });
+
+        io.to(room.id).emit('bombPlaced', { id: bot.id, x: bombX, y: bombY });
+
+        bot.lastBombAt = Date.now();
+
+        bot.escaping = true;
+        bot.escapePath = findSafePath(room, bot.x, bot.y);
+        return true;
     }
 
-    function aStar(sx, sy, ex, ey) {
+    function canBotPlaceBomb(room, bot) {
+        const now = Date.now();
+        const COOLDOWN = 400;
+        if (bot.lastBombAt && now - bot.lastBombAt < COOLDOWN) return false;
+        if (room.bombs.some(b => b.bombX === bot.x && b.bombY === bot.y)) return false;
+        if (isCellBlocked(room, bot.x, bot.y)) return false;
+        return true;
+    }
+
+    function moveBot(room, bot, newX, newY) {
+        if (isCellBlocked(room, newX, newY)) return;
+        bot.x = newX;
+        bot.y = newY;
+        io.to(room.id).emit('playerMoved', { id: bot.id, x: bot.x, y: bot.y });
+    }
+
+    function aStar(room, sx, sy, ex, ey) {
         const open = [{ x: sx, y: sy, g: 0, f: heuristic(sx, sy, ex, ey), parent: null }];
         const closed = new Set();
         while (open.length > 0) {
@@ -272,7 +294,7 @@ module.exports = function (io){
             for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
                 const nx = cur.x + dx, ny = cur.y + dy;
                 if (closed.has(`${nx},${ny}`)) continue;
-                if (isCellBlocked(nx, ny)) continue;
+                if (isCellBlocked(room, nx, ny)) continue;
                 const g = cur.g + 1;
                 const f = g + heuristic(nx, ny, ex, ey);
                 const exst = open.find(n => n.x === nx && n.y === ny);
@@ -284,33 +306,36 @@ module.exports = function (io){
     }
     const heuristic = (x1, y1, x2, y2) => Math.abs(x1 - x2) + Math.abs(y1 - y2);
 
-    function isCellBlocked(x, y) {
+    function isCellBlocked(room, x, y) {
+        const grid = room.grid;
+
         if (y < 0 || y >= grid.length || x < 0 || x >= grid[0].length) return true;
         if (grid[y][x] !== 0) return true;
-        if (BOMB_CLIPPING && bombs.some(b => b.bombX === x && b.bombY === y)) return true;
+        if (BOMB_CLIPPING && room.bombs.some(b => b.bombX === x && b.bombY === y)) return true;
         return false;
     }
 
-    function isCellDangerous(x, y) {
+    function isCellDangerous(room, x, y) {
         const now = Date.now();
-        return bombs.some(b => {
+
+        return room.bombs.some(b => {
             const timeLeft = b.explodeAt - now;
             if (timeLeft > 2500) return false; 
-            const affected = collectExplosionPreview(b.bombX, b.bombY);
+            const affected = collectExplosionPreview(room, b.bombX, b.bombY);
             return affected.has(`${x},${y}`);
         });
     }
 
-    function findSafePath(x, y) {
+    function findSafePath(room, x, y) {
         const q = [{ x, y, path: [{ x, y }] }];
         const visited = new Set([`${x},${y}`]);
         while (q.length) {
             const n = q.shift();
-            if (!isCellDangerous(n.x, n.y)) return n.path;
+            if (!isCellDangerous(room, n.x, n.y)) return n.path;
             for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
                 const nx = n.x + dx, ny = n.y + dy;
                 if (visited.has(`${nx},${ny}`)) continue;
-                if (isCellBlocked(nx, ny)) continue;
+                if (isCellBlocked(room, nx, ny)) continue;
                 visited.add(`${nx},${ny}`);
                 q.push({ x: nx, y: ny, path: [...n.path, { x: nx, y: ny }] });
             }
@@ -318,28 +343,27 @@ module.exports = function (io){
         return null;
     }
 
-    function findAnySafeNeighbor(x, y) {
+    function findAnySafeNeighbor(room, x, y) {
         for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
             const nx = x + dx, ny = y + dy;
-            if (!isCellBlocked(nx, ny) && !isCellDangerous(nx, ny)) return { x: nx, y: ny };
+            if (!isCellBlocked(room, nx, ny) && !isCellDangerous(room, nx, ny)) return { x: nx, y: ny };
         }
         return null;
     }
 
-    function findNearestPlayer(bot) {
+    function findNearestPlayer(room, bot) {
         let target = null, min = Infinity;
-        for (const id in players) {
-            const p = players[id];
-            if (p.bot) continue;
-            if (!p.alive) continue;
-            
+        for (const id in room.players) {
+            const p = room.players[id];
+            if (p.bot || !p.alive) continue;
             const d = Math.abs(bot.x - p.x) + Math.abs(bot.y - p.y);
             if (d < min) { min = d; target = p; }
         }
         return target;
     }
 
-    function collectExplosionPreview(bx, by) {
+    function collectExplosionPreview(room, bx, by) {
+        const grid = room.grid;
         const aff = new Set([`${bx},${by}`]);
         for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
             for (let s = 1; s <= 3; s++) {
@@ -369,15 +393,14 @@ module.exports = function (io){
                     //io.to(id).emit('playerDied', {id});
                 } else {
                     // bot
-                    p.x = Math.floor(Math.random() * grid[0].length);
-                    p.y = Math.floor(Math.random() * grid.length);
+                    p.x = Math.floor(Math.random() * room.grid[0].length);
+                    p.y = Math.floor(Math.random() * room.grid.length);
                 }
 
                 io.emit('playerDied', { id });
             }
         }
     }
-
 
     function explodeBomb(roomId, bx, by) {
         const aff = gameRooms.collectExplosion(roomId, bx, by);
@@ -400,5 +423,4 @@ module.exports = function (io){
         io.emit('itemSpawned', item);
     }
 
-    //return server;
 }

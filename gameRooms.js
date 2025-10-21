@@ -1,3 +1,4 @@
+const { generateBombermanMap } = require('./mapGenerator');
 const { generateRandomMap } = require('./mapGenerator');
 
 const rooms = {}; // { roomId: { id, players, botsEnabled, grid, bombs, items } }
@@ -6,6 +7,8 @@ let itemIdCounter = 0;
 
 function createRoom({ botsEnabled = true } = {}) {
     const id = "room" + (roomIdCounter++);
+
+    console.log("New room " + id);
     const grid = generateRandomMap(81, 50);
     const room = {
         id,
@@ -13,7 +16,8 @@ function createRoom({ botsEnabled = true } = {}) {
         bombs: [],
         items: [],
         botsEnabled,
-        grid
+        grid,
+        maxPlayers: 3,
     };
     rooms[id] = room;
 
@@ -21,6 +25,25 @@ function createRoom({ botsEnabled = true } = {}) {
         addBotToRoom(room, "bot1", 5, 5);
         addBotToRoom(room, "bot2", 10, 10);
     }
+
+    return room;
+}
+
+function createRoom1VS1({ botsEnabled = false } = {}) {
+    const id = "room" + (roomIdCounter++);
+
+    console.log("New room COMPETATIVE" + id);
+    const grid = generateBombermanMap(21, 13);
+    const room = {
+        id,
+        players: {},
+        bombs: [],
+        items: [],
+        botsEnabled,
+        grid,
+        maxPlayers: 2,
+    };
+    rooms[id] = room;
 
     return room;
 }
@@ -36,10 +59,14 @@ function addBotToRoom(room, id, x, y) {
 function findOrCreateRoom(wantBots = true) {
     for (const roomId in rooms) {
         const room = rooms[roomId];
-        if (room.botsEnabled === wantBots && Object.keys(room.players).length < 4) {
+        if (room.botsEnabled === wantBots && Object.keys(room.players).length < room.maxPlayers) {
             return room;
         }
     }
+
+    if(!wantBots)
+        return createRoom1VS1(false);
+
     return createRoom({ botsEnabled: wantBots });
 }
 
@@ -124,6 +151,10 @@ function collectExplosion(roomId, bx, by, aff = new Set()) {
         return aff;
 }
 
+function getAllRooms() {
+    return Object.values(rooms);
+}
+
 module.exports = {
     createRoom,
     findOrCreateRoom,
@@ -134,5 +165,6 @@ module.exports = {
     findRoomByPlayer,
     addBombToRoom,
     isCellBlocked,
-    collectExplosion
+    collectExplosion,
+    getAllRooms
 };

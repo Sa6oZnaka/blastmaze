@@ -17,7 +17,28 @@ function generateRandomMap(rows = 81, cols = 50) {
         return grid;
     }
 
+function generateBombermanMap(width, height) {
+    const grid = [];
+
+    for (let y = 0; y < height; y++) {
+        const row = [];
+        for (let x = 0; x < width; x++) {
+            if (x % 2 === 1 && y % 2 === 1) {
+                row.push(2);
+            } else if (Math.random() < 0.3) {
+                row.push(1);
+            } else {
+                row.push(0);
+            }
+        }
+        grid.push(row);
+    }
+
+    return grid;
+}
+
+
 
 module.exports = {
-    generateRandomMap
+    generateRandomMap, generateBombermanMap
 };

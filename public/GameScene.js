@@ -126,6 +126,7 @@ socket.on('playerRespawned', (data) => {
             canMove = true;
 
             gameSceneRef.cameras.main.startFollow(player);
+            gameSceneRef.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
             deadText.setVisible(false);
             respawnButton.setVisible(false);
@@ -236,6 +237,7 @@ export default class GameScene extends Phaser.Scene {
                     canMove = true;
 
                     gameSceneRef.cameras.main.startFollow(player);
+                    gameSceneRef.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
                     updateVisibleBlocks.call(gameSceneRef);
                 }
@@ -612,7 +614,7 @@ function tryMove(dx, dy) {
                 else
                     player.setFrame(1);
                 
-                checkItemPickup();
+                //checkItemPickup();
                 updateVisibleBlocks.call(gameSceneRef);
             }
         });
