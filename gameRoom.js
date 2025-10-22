@@ -50,10 +50,18 @@ module.exports = function (io){
             socket.emit('roomData', {
                 roomId: room.id,
                 grid: room.grid,
-                players: room.players,
-                items: room.items,
-                bombs: room.bombs
+                players: Object.values(room.players).map(p => ({
+                    id: p.id,
+                    x: p.x,
+                    y: p.y,
+                    alive: p.alive,
+                    bot: p.bot,
+                    username: p.username
+                })),
+                items: room.items.map(i => ({ id: i.id, x: i.x, y: i.y, type: i.type })),
+                bombs: room.bombs.map(b => ({ x: b.bombX, y: b.bombY, explodeAt: b.explodeAt }))
             });
+
 
             console.log(`Connected: ${socket.id} (room ${room.id})`);
 
@@ -448,14 +456,22 @@ module.exports = function (io){
 
         setTimeout(() => {
             io.to(room.id).emit('roomData', {
-                data: room,
                 roomId: room.id,
                 grid: room.grid,
-                players: room.players,
-                items: room.items,
-                bombs: room.bombs
+                players: Object.values(room.players).map(p => ({
+                    id: p.id,
+                    x: p.x,
+                    y: p.y,
+                    alive: p.alive,
+                    bot: p.bot,
+                    username: p.username
+                })),
+                items: room.items.map(i => ({ id: i.id, x: i.x, y: i.y, type: i.type })),
+                bombs: room.bombs.map(b => ({ x: b.bombX, y: b.bombY, explodeAt: b.explodeAt }))
             });
         }, 3000);
+
+
     }
 
 

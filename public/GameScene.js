@@ -321,6 +321,30 @@ export default class GameScene extends Phaser.Scene {
         this.darkness.setDepth(10);
         this.darkness.setScrollFactor(0);
 
+
+        this.darkness2 = this.make.renderTexture({
+            width: this.cameras.main.width * 2,
+            height: this.cameras.main.height * 2,
+            add: true
+        });
+        this.darkness2.setDepth(10);
+        this.darkness2.setScrollFactor(0);
+
+
+        // Gradient (мек светлинен кръг)
+        this.gradientTexture = this.make.renderTexture({
+            width: this.cameras.main.width * 2,
+            height: this.cameras.main.height * 2,
+            add: false
+        });
+
+        // Raycaster светлина
+        this.rayTexture = this.make.renderTexture({
+            width: this.cameras.main.width * 2,
+            height: this.cameras.main.height * 2,
+            add: false
+        });
+
         this.tweens.add({
             targets: this.lightImage,
             scale: { from: 1.9, to: 2.1 },
@@ -349,6 +373,11 @@ export default class GameScene extends Phaser.Scene {
 
         this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
         createLightGradientTexture(this);
+
+        const lightMask = this.lightGraphics.createGeometryMask();
+        lightMask.invertAlpha = true;
+        this.darkness.setMask(lightMask);
+
 
         updateVisibleBlocks();
 
@@ -402,10 +431,15 @@ export default class GameScene extends Phaser.Scene {
         this.fpsText.setText(`FPS: ${fps}`);
 
         // Update the raycaster
-        updateRaycaster.call(this);
+        //updateRaycaster.call(this);
 
         // Light gradeint
-        updateLightGradient.call(this);
+        //updateLightGradient.call(this);
+
+        updateLightGradient2.call(this);
+
+        // Update combined lighting
+        updateLighting.call(this);
 
         // Movement
         if(!canMove) return;
@@ -420,6 +454,36 @@ export default class GameScene extends Phaser.Scene {
         if (heldUp && tryMove(0, -1)) return;
         if (heldDown && tryMove(0, 1)) return;
     }
+}
+
+function updateLighting() {
+    if (!player || !this.darkness || !this.lightGraphics || !this.raycaster || !this.ray) return;
+
+    this.darkness.clear();
+    this.darkness.fill(0x000000, 0.45);
+    this.lightGraphics.clear();
+
+    this.raycaster.mapGameObjects(visibleBlocks.getChildren(), true);
+    this.ray.setOrigin(player.x, player.y);
+    const intersections = this.ray.castCircle();
+
+    if (intersections.length > 0) {
+        this.lightGraphics.fillPoints(intersections, true);
+    }
+
+    const cam = this.cameras.main;
+    const buffer = 50;
+    this.raycaster.setBoundingBox(
+        cam.scrollX - buffer,
+        cam.scrollY - buffer,
+        cam.width + buffer * 2,
+        cam.height + buffer * 2
+    );
+
+    const lightMask = this.lightGraphics.createGeometryMask();
+    lightMask.invertAlpha = true;
+
+    this.darkness.setMask(lightMask);
 }
 
 function createLightSystem(scene) {
@@ -451,6 +515,20 @@ function updateLightGradient() {
 
     this.lightImage.setPosition(playerCamX, playerCamY);
     this.darkness.erase(this.lightImage);
+}
+
+function updateLightGradient2() {
+    if (!player || !this.lightImage || !this.darkness) return;
+
+    this.darkness2.clear();
+    this.darkness2.fill(0x000000, 1);
+
+    const camView = this.cameras.main.worldView;
+    const playerCamX = player.x - camView.x + this.cameras.main.width;
+    const playerCamY = player.y - camView.y + this.cameras.main.height;
+
+    this.lightImage.setPosition(playerCamX, playerCamY);
+    this.darkness2.erase(this.lightImage);
 }
 
 function updateVisibleBlocks() {
@@ -520,9 +598,12 @@ function updateRaycaster() {
     this.ray.setOrigin(player.x, player.y);
     const intersections = this.ray.castCircle();
 
+
     this.lightGraphics.clear();
+
     if (intersections.length > 0) {
-      this.lightGraphics.fillPoints(intersections, true);
+        this.lightGraphics.fillStyle(0xffffff); // бял цвят за маската
+        this.lightGraphics.fillPoints(intersections, true);
     }
 
     const cam = this.cameras.main;
@@ -629,7 +710,7 @@ socket.on('roundEnded', ({ round, winner, draw }) => {
 });
 
 
-socket.on('roomData', ({ data }) => {
+socket.on('roomData', (data) => {
     safeEvent(() => {
         if (!data) return;
 
@@ -639,7 +720,6 @@ socket.on('roomData', ({ data }) => {
 
 
 function resetGameScene(roomData) {
-
     if (!gameSceneRef) return;
 
     // bombs
@@ -678,7 +758,6 @@ function resetGameScene(roomData) {
     GRID_WIDTH = grid[0].length;
     GRID_HEIGHT = grid.length;
 
-
     player = null;
     canMove = false;
     moving = false;
@@ -689,8 +768,10 @@ function resetGameScene(roomData) {
     if (roomData.players) {
         for (const id in roomData.players) {
             addPlayer(roomData.players[id]); // използва gameSceneRef
-            if (id === socket.id) {
-                player = players[id];
+            
+            if (roomData.players[id].id == socket.id) {
+
+                player = players[socket.id];
                 if (player) {
                     player.gridX = roomData.players[id].x;
                     player.gridY = roomData.players[id].y;
@@ -900,7 +981,7 @@ socket.on('bombExploded', ({ x, y, affected }) => {
 });
 
 function createLightGradientTexture() {
-    const size = 160;
+    const size = 100;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
