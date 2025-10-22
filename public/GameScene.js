@@ -500,12 +500,12 @@ function updateVisibleBlocks() {
         }
     }
 
-    if(!this || !this.raycaster) return;
+    //if(!this || !this.raycaster) return;
 
     for (const key in blocksMap) {
         const [bx, by] = key.split('_').map(Number);
         if (bx < startX || bx >= endX || by < startY || by >= endY) {
-            this.raycaster.removeMappedObjects(blocksMap[key]);
+            gameSceneRef.raycaster.removeMappedObjects(blocksMap[key]);
             blocksMap[key].destroy();
             delete blocksMap[key];
         }
