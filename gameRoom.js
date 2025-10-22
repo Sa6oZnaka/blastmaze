@@ -84,6 +84,8 @@ module.exports = function (io){
             const room = gameRooms.findRoomByPlayer(socket.id);
             if (!room) return;
 
+            if (!room.allowRespawn) return;
+
             const player = room.players[socket.id];
             if (!player) return;
 
@@ -145,6 +147,8 @@ module.exports = function (io){
             //}
 
             console.log(`Disconnected: ${socket.id} (room ${room.id})`);
+
+            checkForWinner(room);
         });
     });
 
@@ -378,21 +382,24 @@ module.exports = function (io){
     }
 
     function checkPlayersInExplosion(roomId, aff) {
+        const room = gameRooms.getRoom(roomId);
+        if (!room) return;
 
-        var room = gameRooms.getRoom(roomId);
-        if(!room) return;
+        const players = room.players;
 
-        let players = room.players;
+        const aliveBefore = Object.values(players).filter(p => p.alive && !p.bot);
+
+        const deadThisTick = [];
+
         for (const id in players) {
             const p = players[id];
             if (aff.has(`${p.x},${p.y}`)) {
                 if (!p.bot) {
-                    if(!p.alive) return;// already dead
+                    if (!p.alive) continue;
 
-                    players[id].alive = false;
-                    //io.to(id).emit('playerDied', {id});
+                    p.alive = false;
+                    deadThisTick.push(p);
                 } else {
-                    // bot
                     p.x = Math.floor(Math.random() * room.grid[0].length);
                     p.y = Math.floor(Math.random() * room.grid.length);
                 }
@@ -400,9 +407,61 @@ module.exports = function (io){
                 io.emit('playerDied', { id });
             }
         }
+
+        // ако не може да се респаунем и има умрял
+        if (!room.allowRespawn && deadThisTick.length > 0) {
+            checkForWinner(room, aliveBefore, deadThisTick);
+        }
     }
 
+    function checkForWinner(room) {
+        if (!room || room.allowRespawn) return;
+
+        const players = room.players;
+        const alivePlayers = Object.values(players).filter(p => p.alive && !p.bot);
+        let winner = null;
+        let draw = false;
+
+        // Ако остане само един жив -> печели
+        if (alivePlayers.length === 1) {
+            winner = alivePlayers[0];
+        }
+
+        // Ако няма живи -> равенство
+        else if (alivePlayers.length === 0) {
+            draw = true;
+        }
+
+        // Ако още има повече от един жив, продължаваме
+        else {
+            return;
+        }
+
+        room.round++;
+        io.to(room.id).emit('roundEnded', {
+            round: room.round,
+            winner: winner ? { id: winner.id, name: winner.username || winner.name } : null,
+            draw: draw || !winner
+        });
+
+        gameRooms.nextRound(room.id);
+
+        setTimeout(() => {
+            io.to(room.id).emit('roomData', {
+                data: room,
+                roomId: room.id,
+                grid: room.grid,
+                players: room.players,
+                items: room.items,
+                bombs: room.bombs
+            });
+        }, 3000);
+    }
+
+
     function explodeBomb(roomId, bx, by) {
+        if(!gameRooms.hasBomb(roomId, bx, by)) return;
+
         const aff = gameRooms.collectExplosion(roomId, bx, by);
         const arr = [...aff].map(s => {
             const [x, y] = s.split(',').map(Number);

@@ -17,7 +17,10 @@ function createRoom({ botsEnabled = true } = {}) {
         items: [],
         botsEnabled,
         grid,
-        maxPlayers: 3,
+        maxPlayers: 10,
+        rounds: 1,
+        roundTime: 3600,
+        allowRespawn: true
     };
     rooms[id] = room;
 
@@ -42,6 +45,9 @@ function createRoom1VS1({ botsEnabled = false } = {}) {
         botsEnabled,
         grid,
         maxPlayers: 2,
+        rounds: 7,
+        roundTime: 3600,
+        allowRespawn: false
     };
     rooms[id] = room;
 
@@ -116,6 +122,14 @@ function isCellBlocked(roomId, x, y) {
     return false;
 }
 
+function hasBomb(roomId, bx, by) {
+    const room = rooms[roomId];
+    if (!room) return false;
+
+    return room.bombs.some(b => b.bombX === bx && b.bombY === by);
+}
+
+
 function collectExplosion(roomId, bx, by, aff = new Set()) {
     let grid = rooms[roomId].grid;
     let bombs = rooms[roomId].bombs;
@@ -155,6 +169,43 @@ function getAllRooms() {
     return Object.values(rooms);
 }
 
+function nextRound(roomId) {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    room.round = (room.round || 0) + 1;
+
+    if (! room.botsEnabled) {
+        room.grid = generateBombermanMap(21, 13);
+    } else {
+        room.grid = generateRandomMap(81, 50);
+    }
+
+    room.bombs = [];
+    room.items = [];
+
+    // new player positions
+    for (const id in room.players) {
+        const player = room.players[id];
+        player.alive = true;
+
+        player.x = Math.floor(Math.random() * room.grid[0].length);
+        player.y = Math.floor(Math.random() * room.grid.length);
+    }
+
+    // reset bots
+    if (room.botsEnabled) {
+        const botCount = Object.values(room.players).filter(p => p.bot).length;
+        if (botCount < 2) {
+            addBotToRoom(room, "bot1", 5, 5);
+            addBotToRoom(room, "bot2", 10, 10);
+        }
+    }
+
+    console.log(`Room ${roomId}: next round started (#${room.round})`);
+}
+
+
 module.exports = {
     createRoom,
     findOrCreateRoom,
@@ -166,5 +217,7 @@ module.exports = {
     addBombToRoom,
     isCellBlocked,
     collectExplosion,
-    getAllRooms
+    getAllRooms,
+    nextRound,
+    hasBomb
 };

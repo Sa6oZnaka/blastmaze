@@ -54,7 +54,7 @@ socket.on('currentPlayers', (serverPlayers) => {
 
                 gameSceneRef.cameras.main.startFollow(player);
 
-                updateVisibleBlocks.call(gameSceneRef);
+                updateVisibleBlocks.call();
             }
         }
     };
@@ -119,6 +119,13 @@ socket.on('playerRespawned', (data) => {
         players[data.id].visible = true;
 
         if(socket.id === data.id){
+            // blocks
+            for (const key in blocksMap) {
+                gameSceneRef.raycaster.removeMappedObjects(blocksMap[key]);
+                blocksMap[key].destroy();
+                delete blocksMap[key];
+            }
+
             player = players[socket.id];
 
             player.gridX = data.x;
@@ -211,37 +218,7 @@ export default class GameScene extends Phaser.Scene {
 
     init(data) {
         safeEvent(() => {
-
-            let roomData = data.roomData;
-
-            // map data
-            grid = roomData.grid;
-            GRID_WIDTH = grid[0].length;
-            GRID_HEIGHT = grid.length;
-
-            //items
-            items = roomData.items;
-            // todo draw items function
-
-            // players
-            for (const id in roomData.players) {
-
-                if (id !== socket.id) {
-                    addPlayer(roomData.players[id]);
-                }else{
-                    addPlayer(roomData.players[id]);
-                    player = players[id];
-
-                    player.gridX = 0;
-                    player.gridY = 0;
-                    canMove = true;
-
-                    gameSceneRef.cameras.main.startFollow(player);
-                    gameSceneRef.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
-
-                    updateVisibleBlocks.call(gameSceneRef);
-                }
-            }
+            resetGameScene(data.roomData); 
         });
     }
 
@@ -373,7 +350,7 @@ export default class GameScene extends Phaser.Scene {
         this.lightGraphics = this.add.graphics({ fillStyle: { color: 0xffffaa, alpha: 0.3 } });
         createLightGradientTexture(this);
 
-        updateVisibleBlocks(this);
+        updateVisibleBlocks();
 
         respawnButton = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 100, 'Respawn', {
             fontFamily: 'Arial',
@@ -537,7 +514,7 @@ function updateVisibleBlocks() {
 
 function updateRaycaster() {
     
-    if(!player) return;
+    if(!player || !this.raycaster || !this.ray || !visibleBlocks) return;
 
     this.raycaster.mapGameObjects(visibleBlocks.getChildren(), true);
     this.ray.setOrigin(player.x, player.y);
@@ -615,7 +592,7 @@ function tryMove(dx, dy) {
                     player.setFrame(1);
                 
                 //checkItemPickup();
-                updateVisibleBlocks.call(gameSceneRef);
+                updateVisibleBlocks.call();
             }
         });
 
@@ -641,6 +618,96 @@ socket.on('revertMove', ({ x, y }) => {
 
     player.anims.stop();
 });
+
+
+socket.on('roundEnded', ({ round, winner, draw }) => {
+
+    console.log("Round ended!!!");
+    if(winner)
+        console.log("Round " + round + " winner " + winner.id);
+
+});
+
+
+socket.on('roomData', ({ data }) => {
+    safeEvent(() => {
+        if (!data) return;
+
+        resetGameScene(data);;
+    });
+});
+
+
+function resetGameScene(roomData) {
+
+    if (!gameSceneRef) return;
+
+    // bombs
+    const children = [...bombs.getChildren()];
+    for (const bomb of children) {
+        bombs.remove(bomb, true, true);
+    }
+
+    // blocks
+    for (const key in blocksMap) {
+        gameSceneRef.raycaster.removeMappedObjects(blocksMap[key]);
+        blocksMap[key].destroy();
+        delete blocksMap[key];
+    }
+
+    // Destroy players visuals then reset players object
+    for (const id in players) {
+        try { 
+            if (players[id] && typeof players[id].destroy === 'function') {
+                players[id].destroy();
+            }
+        } catch (e) {}
+        delete players[id];
+    }
+    players = {};
+
+    //Clear notifications
+    if (deathNotifications && deathNotifications.length) {
+        deathNotifications.forEach(n => {
+            try { n.textObj.destroy(); } catch (e) {}
+        });
+        deathNotifications = [];
+    }
+
+    grid = roomData.grid;
+    GRID_WIDTH = grid[0].length;
+    GRID_HEIGHT = grid.length;
+
+
+    player = null;
+    canMove = false;
+    moving = false;
+
+    deadText.setVisible(false);
+    respawnButton.setVisible(false);
+
+    if (roomData.players) {
+        for (const id in roomData.players) {
+            addPlayer(roomData.players[id]); // използва gameSceneRef
+            if (id === socket.id) {
+                player = players[id];
+                if (player) {
+                    player.gridX = roomData.players[id].x;
+                    player.gridY = roomData.players[id].y;
+                    player.x = player.gridX * TILE_SIZE + TILE_SIZE/2;
+                    player.y = player.gridY * TILE_SIZE + TILE_SIZE/2;
+                    player.visible = roomData.players[id].alive !== false;
+                    canMove = true;
+                    gameSceneRef.cameras.main.startFollow(player);
+                    gameSceneRef.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+                }
+            }
+        }
+    }
+
+    updateVisibleBlocks.call();
+}
+
 
 
 socket.on('playerMoved', ({ id, x, y }) => {
@@ -758,6 +825,9 @@ socket.on('bombPlaced', ({ id, x, y }) => {
 
 socket.on('bombExploded', ({ x, y, affected }) => {
     safeEvent(() => {
+
+        if(! bombs) return;
+
         const children = [...bombs.getChildren()];
         for (const bomb of children) {
             const bx = Math.floor((bomb.x - TILE_SIZE / 2) / TILE_SIZE);
