@@ -381,6 +381,27 @@ export default class GameScene extends Phaser.Scene {
 
         updateVisibleBlocks();
 
+
+        /// UI
+        const hudY = 8;
+        const hudFont = { font: '20px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 3 };
+
+        this.roundBar = this.add.rectangle(
+            this.cameras.main.centerX,
+            hudY + 0,
+            this.cameras.main.width,
+            28,
+            0x000000,
+            0.1 // по-лека прозрачност
+        ).setOrigin(0.5, 0).setScrollFactor(0).setDepth(200);
+
+        this.roundCenterText = this.add.text(
+            this.cameras.main.centerX,
+            hudY,
+            "Round ?",
+            hudFont
+        ).setOrigin(0.5, 0).setScrollFactor(0).setDepth(201);
+
         respawnButton = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 100, 'Respawn', {
             fontFamily: 'Arial',
             fontSize: '28px',
@@ -428,7 +449,7 @@ export default class GameScene extends Phaser.Scene {
     update() {
         // FPS
         const fps = Math.floor(this.game.loop.actualFps);
-        this.fpsText.setText(`FPS: ${fps}`);
+        this.fpsText.setText(`${fps}`);
 
         // Update the raycaster
         //updateRaycaster.call(this);
@@ -700,15 +721,41 @@ socket.on('revertMove', ({ x, y }) => {
     player.anims.stop();
 });
 
+socket.on('roundEnded', ({ round, winner, draw, scores, totalRounds }) => {
+    safeEvent(() => {
+        canMove = false;
 
-socket.on('roundEnded', ({ round, winner, draw }) => {
+        let msg = "";
 
-    console.log("Round ended!!!");
-    if(winner)
-        console.log("Round " + round + " winner " + winner.id);
+        if (draw) {
+            msg = "🤝 Draw!";
+        } else if (winner) {
 
+            console.log(winner);
+
+            msg = `🏆 ${winner.name || "?"} won!`;
+        }
+
+        const resultText = gameSceneRef.add.text(
+            gameSceneRef.cameras.main.centerX,
+            gameSceneRef.cameras.main.centerY - 100,
+            msg,
+            {
+                font: '48px Arial',
+                fill: draw ? '#ffff00' : '#00ff00',
+                stroke: '#000',
+                strokeThickness: 6
+            }
+        ).setOrigin(0.5).setScrollFactor(0).setDepth(400);
+
+        // todo като почне нов рунд да го маха
+        gameSceneRef.time.delayedCall(3000, () => resultText.destroy());
+    });
 });
 
+function updateRound(round){
+    gameSceneRef.roundCenterText.setText(`Round ${round}`);
+}
 
 socket.on('roomData', (data) => {
     safeEvent(() => {
@@ -718,9 +765,10 @@ socket.on('roomData', (data) => {
     });
 });
 
-
 function resetGameScene(roomData) {
     if (!gameSceneRef) return;
+
+    updateRound(roomData.round);
 
     // bombs
     const children = [...bombs.getChildren()];

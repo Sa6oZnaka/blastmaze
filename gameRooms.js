@@ -20,7 +20,11 @@ function createRoom({ botsEnabled = true } = {}) {
         maxPlayers: 10,
         rounds: 1,
         roundTime: 3600,
-        allowRespawn: true
+        allowRespawn: true,
+        round: 1,
+        requiredToStart: 1,
+        started: false,
+        joinAfterStart: true
     };
     rooms[id] = room;
 
@@ -47,7 +51,11 @@ function createRoom1VS1({ botsEnabled = false } = {}) {
         maxPlayers: 2,
         rounds: 7,
         roundTime: 3600,
-        allowRespawn: false
+        allowRespawn: false,
+        round: 1,
+        requiredToStart: 2,
+        started: false,
+        joinAfterStart: false
     };
     rooms[id] = room;
 
@@ -65,16 +73,28 @@ function addBotToRoom(room, id, x, y) {
 function findOrCreateRoom(wantBots = true) {
     for (const roomId in rooms) {
         const room = rooms[roomId];
-        if (room.botsEnabled === wantBots && Object.keys(room.players).length < room.maxPlayers) {
+
+        const playerCount = Object.keys(room.players).length;
+
+        const notFull = playerCount < room.maxPlayers;
+        const canJoin = !room.started || room.joinAfterStart; // ако не е стартирала или може да се влиза след старта
+
+        if (
+            room.botsEnabled === wantBots &&
+            notFull &&
+            canJoin
+        ) {
             return room;
         }
     }
 
-    if(!wantBots)
+    // Ако не е намерена - нова
+    if (!wantBots)
         return createRoom1VS1(false);
 
-    return createRoom({ botsEnabled: wantBots });
+    return createRoom(true);
 }
+
 
 function addPlayerToRoom(room, player) {
     room.players[player.id] = player;
@@ -173,7 +193,7 @@ function nextRound(roomId) {
     const room = rooms[roomId];
     if (!room) return;
 
-    room.round = (room.round || 0) + 1;
+    //room.round = (room.round || 0) + 1;
 
     if (! room.botsEnabled) {
         room.grid = generateBombermanMap(21, 13);
