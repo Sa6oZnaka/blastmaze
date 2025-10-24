@@ -42,10 +42,13 @@ module.exports = function (io){
             const room = gameRooms.findOrCreateRoom(mode);
             socket.join(room.id);
 
+            let posX = Math.floor(Math.random() * room.grid[0].length);
+            let posY = Math.floor(Math.random() * room.grid.length);
+
             const player = {
                 id: socket.id,
-                x: 0,
-                y: 0,
+                x: posX,
+                y: posY,
                 bot: false,
                 username: socket.handshake.session.user.username,
                 alive: true
@@ -167,9 +170,10 @@ module.exports = function (io){
             io.to(room.id).emit('playerLeft', { id: socket.id });
 
             // ако няма никой останал в стаята, може да я изтриеш
-            //if (Object.keys(room.players).length === 0) {
-            //    gameRooms.removeRoom(room.id);
-            //}
+            const playerCount = Object.values(room.players).filter(p => !p.bot).length;
+            if (playerCount === 0) {
+                gameRooms.removeRoom(room.id);
+            }
 
             console.log(`Disconnected: ${socket.id} (room ${room.id})`);
 

@@ -95,8 +95,42 @@ function findOrCreateRoom(wantBots = true) {
     return createRoom(true);
 }
 
+function spawnPlayer1VS1(room, player){
+    let grid = room.grid;
+    let width = room.grid[0].length;
+    let height = room.grid.length;
+
+    // Избираме случайна "четна" клетка
+    const posX = Math.floor(Math.random() * (width / 2)) * 2;
+    const posY = Math.floor(Math.random() * (height / 2)) * 2;
+
+    player.x = posX;
+    player.y = posY;
+    const dirs = [
+        [0, 0],
+        [1, 0], [-1, 0],
+        [0, 1], [0, -1],
+    ];
+
+    for (const [dx, dy] of dirs) {
+        const nx = posX + dx;
+        const ny = posY + dy;
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            if (grid[ny][nx] !== 2) {
+                grid[ny][nx] = 0;
+            }
+        }
+    }
+
+    room.players[player.id] = player;
+}
 
 function addPlayerToRoom(room, player) {
+
+    if(!room.wantBots){
+        return spawnPlayer1VS1(room, player);
+    }
+
     room.players[player.id] = player;
 }
 
@@ -153,7 +187,7 @@ function hasBomb(roomId, bx, by) {
 function collectExplosion(roomId, bx, by, aff = new Set()) {
     let grid = rooms[roomId].grid;
     let bombs = rooms[roomId].bombs;
-    let BOMB_RADIUS = 5;
+    let BOMB_RADIUS = 4;
     let DROP_ENABLED = false;
 
         const idx = bombs.findIndex(b => b.bombX === bx && b.bombY === by);
@@ -206,11 +240,18 @@ function nextRound(roomId) {
 
     // new player positions
     for (const id in room.players) {
+        
+
+
         const player = room.players[id];
         player.alive = true;
 
-        player.x = Math.floor(Math.random() * room.grid[0].length);
-        player.y = Math.floor(Math.random() * room.grid.length);
+        if(room.wantBots){
+            player.x = Math.floor(Math.random() * room.grid[0].length);
+            player.y = Math.floor(Math.random() * room.grid.length);
+        }else{
+            spawnPlayer1VS1(room, player);
+        }
     }
 
     // reset bots
@@ -223,6 +264,15 @@ function nextRound(roomId) {
     }
 
     console.log(`Room ${roomId}: next round started (#${room.round})`);
+}
+
+function removeRoom(id) {
+    if (rooms[id]) {
+        console.log(`Room ${id} removed`);
+        delete rooms[id];
+        return true;
+    }
+    return false;
 }
 
 
@@ -239,5 +289,6 @@ module.exports = {
     collectExplosion,
     getAllRooms,
     nextRound,
-    hasBomb
+    hasBomb,
+    removeRoom
 };
