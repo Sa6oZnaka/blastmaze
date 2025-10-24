@@ -42,11 +42,24 @@ module.exports = function (app, passport, connection, serverRooms) {
         });
     });
 
-    app.post('/register', passport.authenticate('local-register', {
-        successRedirect: '/',
-        failureRedirect: '/register',
-        failureFlash: true
-    }));
+    app.post('/register', (req, res, next) => {
+        passport.authenticate('local-register', (err, user, info) => {
+            if (err) return next(err);
+            if (!user) return res.redirect('/register');
+
+            // Автоматично логване след успешна регистрация
+            req.logIn(user, (err) => {
+                if (err) return next(err);
+
+                req.session.user = {
+                    id: user.id,
+                    username: user.username
+                };
+
+                return res.redirect('/');
+            });
+        })(req, res, next);
+    });
 
     app.get('/', isLoggedIn, function (req, res) {
         res.render('index.ejs', null);
