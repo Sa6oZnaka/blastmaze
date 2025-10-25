@@ -26,45 +26,10 @@ let bombPrevew = false;
 
 let respawnButton;
 let deadText;
+let resultText;
+let wins = 0;
 
 import socket from './socket.js';
-// map
-socket.on('mapData', (mapData) => {
-    safeEvent(() => {
-        GRID_WIDTH = mapData.width;
-        GRID_HEIGHT = mapData.height;
-
-        grid = mapData.grid;
-    });
-});
-
-// players data
-socket.on('currentPlayers', (serverPlayers) => {
-    const handlePlayers = () => {
-        for (const id in serverPlayers) {
-            if (id !== socket.id) {
-                addPlayer(serverPlayers[id]);
-            }else{
-                addPlayer(serverPlayers[id]);
-                player = players[id];
-
-                player.gridX = 0;
-                player.gridY = 0;
-                canMove = true;
-
-                gameSceneRef.cameras.main.startFollow(player);
-
-                updateVisibleBlocks.call();
-            }
-        }
-    };
-
-    if (sceneCreated) {
-        handlePlayers();
-    } else {
-        eventQueue.push(handlePlayers);
-    }
-});
 
 socket.on('playerJoined', (data) => {
     safeEvent(() => {
@@ -451,15 +416,8 @@ export default class GameScene extends Phaser.Scene {
         const fps = Math.floor(this.game.loop.actualFps);
         this.fpsText.setText(`${fps}`);
 
-        // Update the raycaster
-        //updateRaycaster.call(this);
+        updateLightGradient.call(this);
 
-        // Light gradeint
-        //updateLightGradient.call(this);
-
-        updateLightGradient2.call(this);
-
-        // Update combined lighting
         updateLighting.call(this);
 
         // Movement
@@ -525,20 +483,6 @@ function createLightSystem(scene) {
 }
 
 function updateLightGradient() {
-    if (!player || !this.lightImage || !this.darkness) return;
-
-    this.darkness.clear();
-    this.darkness.fill(0x000000, 1);
-
-    const camView = this.cameras.main.worldView;
-    const playerCamX = player.x - camView.x + this.cameras.main.width;
-    const playerCamY = player.y - camView.y + this.cameras.main.height;
-
-    this.lightImage.setPosition(playerCamX, playerCamY);
-    this.darkness.erase(this.lightImage);
-}
-
-function updateLightGradient2() {
     if (!player || !this.lightImage || !this.darkness) return;
 
     this.darkness2.clear();
@@ -609,33 +553,6 @@ function updateVisibleBlocks() {
             delete blocksMap[key];
         }
     }
-}
-
-function updateRaycaster() {
-    
-    if(!player || !this.raycaster || !this.ray || !visibleBlocks) return;
-
-    this.raycaster.mapGameObjects(visibleBlocks.getChildren(), true);
-    this.ray.setOrigin(player.x, player.y);
-    const intersections = this.ray.castCircle();
-
-
-    this.lightGraphics.clear();
-
-    if (intersections.length > 0) {
-        this.lightGraphics.fillStyle(0xffffff); // бял цвят за маската
-        this.lightGraphics.fillPoints(intersections, true);
-    }
-
-    const cam = this.cameras.main;
-    const buffer = 50; // buffer zone
-    
-    const fromX = cam.scrollX - buffer;
-    const fromY = cam.scrollY - buffer;
-    const toX = cam.width + buffer * 2;
-    const toY = cam.height + buffer * 2;
-
-    this.raycaster.setBoundingBox(fromX , fromY, toX, toY);
 }
 
 function tryMove(dx, dy) {
@@ -731,12 +648,15 @@ socket.on('roundEnded', ({ round, winner, draw, scores, totalRounds }) => {
             msg = "🤝 Draw!";
         } else if (winner) {
 
-            console.log(winner);
-
-            msg = `🏆 ${winner.name || "?"} won!`;
+            if(winner.id == socket.id){
+                msg = `Winner!`;
+                wins ++;
+            }else{
+                msg = `Loser!`;
+            }
         }
 
-        const resultText = gameSceneRef.add.text(
+        resultText = gameSceneRef.add.text(
             gameSceneRef.cameras.main.centerX,
             gameSceneRef.cameras.main.centerY - 100,
             msg,
@@ -747,14 +667,11 @@ socket.on('roundEnded', ({ round, winner, draw, scores, totalRounds }) => {
                 strokeThickness: 6
             }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(400);
-
-        // todo като почне нов рунд да го маха
-        gameSceneRef.time.delayedCall(3000, () => resultText.destroy());
     });
 });
 
 function updateRound(round){
-    gameSceneRef.roundCenterText.setText(`Round ${round}`);
+    gameSceneRef.roundCenterText.setText(`Round ${round} (${wins})`);
 }
 
 socket.on('roomData', (data) => {
@@ -769,6 +686,8 @@ function resetGameScene(roomData) {
     if (!gameSceneRef) return;
 
     updateRound(roomData.round);
+    if(resultText)
+        resultText.destroy();
 
     // bombs
     const children = [...bombs.getChildren()];
@@ -785,11 +704,7 @@ function resetGameScene(roomData) {
 
     // Destroy players visuals then reset players object
     for (const id in players) {
-        try { 
-            if (players[id] && typeof players[id].destroy === 'function') {
-                players[id].destroy();
-            }
-        } catch (e) {}
+        players[id].destroy();
         delete players[id];
     }
     players = {};
