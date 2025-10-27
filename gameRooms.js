@@ -49,7 +49,7 @@ function createRoom1VS1({ botsEnabled = false } = {}) {
         botsEnabled,
         grid,
         maxPlayers: 2,
-        rounds: 7,
+        rounds: 3,
         roundTime: 3600,
         allowRespawn: false,
         round: 1,

@@ -29,6 +29,9 @@ let deadText;
 let resultText;
 let wins = 0;
 
+let showRounds = false;
+let showRespawnMenu = false;
+
 import socket from './socket.js';
 
 socket.on('playerJoined', (data) => {
@@ -67,7 +70,7 @@ socket.on('playerDied', ({ id }) => {
 
         players[id].visible = false;
 
-        if(id == socket.id){
+        if(id == socket.id && showRespawnMenu){
             deadText.setVisible(true);
             respawnButton.setVisible(true);
 
@@ -156,6 +159,16 @@ socket.on('playerLeft', ({ id }) => {
             delete players[id];
         }
 
+    });
+});
+
+socket.on('gameEnded', (data) => {
+    safeEvent(() => {
+        console.log("GAME ENDED");
+        canMove = false;
+
+        gameSceneRef.scene.stop('GameScene');
+        gameSceneRef.scene.start('MenuScene');
     });
 });
 
@@ -365,7 +378,7 @@ export default class GameScene extends Phaser.Scene {
             hudY,
             "Round ?",
             hudFont
-        ).setOrigin(0.5, 0).setScrollFactor(0).setDepth(201);
+        ).setOrigin(0.5, 0).setScrollFactor(0).setDepth(201).setVisible(false);
 
         respawnButton = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 100, 'Respawn', {
             fontFamily: 'Arial',
@@ -685,36 +698,82 @@ socket.on('roomData', (data) => {
 function resetGameScene(roomData) {
     if (!gameSceneRef) return;
 
-    updateRound(roomData.round);
+    if (gameSceneRef.tweens) gameSceneRef.tweens.killAll();
+    if (gameSceneRef.time) gameSceneRef.time.removeAllEvents();
+
+    if(roomData.showRounds){
+        updateRound(roomData.round);
+        gameSceneRef.roundCenterText.setVisible(true);
+    }
+
+    showRespawnMenu = roomData.respawn;
+
     if(resultText)
         resultText.destroy();
 
-    // bombs
-    const children = [...bombs.getChildren()];
-    for (const bomb of children) {
-        bombs.remove(bomb, true, true);
+    // bomb
+    if (bombs) {
+        const bombChildren = bombs.getChildren ? [...bombs.getChildren()] : [];
+        for (const bomb of bombChildren) {
+            if (bomb.previewTiles) {
+                bomb.previewTiles.forEach(tile => tile.destroy());
+                bomb.previewTiles = [];
+            }
+
+            if (bomb.delayedCalls) {
+                bomb.delayedCalls.forEach(dc => dc.remove(false));
+                bomb.delayedCalls = [];
+            }
+
+            if (bomb.anims) bomb.anims.stop();
+            gameSceneRef.tweens.killTweensOf(bomb);
+            bomb.destroy(true); 
+        }
+        bombs.clear(true);
     }
+
+    
+
+
 
     // blocks
     for (const key in blocksMap) {
-        gameSceneRef.raycaster.removeMappedObjects(blocksMap[key]);
-        blocksMap[key].destroy();
-        delete blocksMap[key];
+        const block = blocksMap[key];
+        if (block) {
+            if (gameSceneRef.raycaster)
+                gameSceneRef.raycaster.removeMappedObjects(block);
+            block.destroy();
+            delete blocksMap[key];
+        }
     }
+
 
     // Destroy players visuals then reset players object
     for (const id in players) {
-        players[id].destroy();
+        const p = players[id];
+        if (p) p.destroy();
         delete players[id];
     }
     players = {};
+    player = null;
+
 
     //Clear notifications
-    if (deathNotifications && deathNotifications.length) {
-        deathNotifications.forEach(n => {
-            try { n.textObj.destroy(); } catch (e) {}
+    if (deathNotifications.length) {
+        deathNotifications.forEach(entry => {
+            entry.fadeTween?.stop();
+            entry.timeout?.remove(false);
+            entry.textObj.destroy();
         });
         deathNotifications = [];
+    }
+
+    // items
+    if (items && items.getChildren) {
+        const children = [...items.getChildren()];
+        for (const item of children) {
+            items.remove(item, true, true);
+        }
     }
 
     grid = roomData.grid;
@@ -751,7 +810,6 @@ function resetGameScene(roomData) {
 
     updateVisibleBlocks.call();
 }
-
 
 
 socket.on('playerMoved', ({ id, x, y }) => {
@@ -833,17 +891,11 @@ socket.on('bombPlaced', ({ id, x, y }) => {
         bombs.add(bomb);
         bomb.setDepth(1);
 
-        gameSceneRef.time.delayedCall(600, () => {
-            bomb.setFrame(1);
-        });
+        bomb.delayedCalls = [];
+        bomb.delayedCalls.push(gameSceneRef.time.delayedCall(600, () => { bomb.setFrame(1); }));
+        bomb.delayedCalls.push(gameSceneRef.time.delayedCall(1200, () => { bomb.setFrame(2); }));
+        bomb.delayedCalls.push(gameSceneRef.time.delayedCall(1800, () => { bomb.setFrame(3); }));
 
-        gameSceneRef.time.delayedCall(1200, () => {
-            bomb.setFrame(2);
-        });
-
-        gameSceneRef.time.delayedCall(1800, () => {
-            bomb.setFrame(3);
-        });
 
         if(bombPrevew){
             const affected = previewExplosion(x, y);

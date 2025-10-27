@@ -5,6 +5,11 @@ export default class MenuScene extends Phaser.Scene {
         super({ key: 'MenuScene' });
     }
 
+    init() {
+        this.searching = false;
+        //socket.removeAllListeners('matchFound');
+    }
+
     preload() {
         this.load.image('bg', 'assets/block.png');
     }
@@ -160,8 +165,9 @@ export default class MenuScene extends Phaser.Scene {
         this.cancelBtn.container.on('pointerdown', () => this.cancelSearch());
 
         socket.emit('findGame', { mode });
-        socket.once('roomData', (roomData) => {
+        socket.on('matchFound', (roomData) => {
             if (!this.searching) return;
+
             this.scene.start('GameScene', { roomData });
         });
     }

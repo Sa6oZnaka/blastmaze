@@ -62,11 +62,12 @@ module.exports = function (io){
                 if(nonBotCount >= room.requiredToStart){
                     room.started = true;
                     // Пращаме на всички чакащи да почне
-                    sendRoomData(room);
+                    sendRoomData(room, true);
                 }
             }else{
                 // Изпращаме данни за стаята на този клиент
-                socket.emit('roomData', {
+                //socket.emit('roomData', {
+                socket.emit('matchFound', {
                     roomId: room.id,
                     round: room.round,
                     grid: room.grid,
@@ -79,7 +80,9 @@ module.exports = function (io){
                         username: p.username
                     })),
                     items: room.items.map(i => ({ id: i.id, x: i.x, y: i.y, type: i.type })),
-                    bombs: room.bombs.map(b => ({ x: b.bombX, y: b.bombY, explodeAt: b.explodeAt }))
+                    bombs: room.bombs.map(b => ({ x: b.bombX, y: b.bombY, explodeAt: b.explodeAt })),
+                    respawn: room.allowRespawn,
+                    showRounds: room.rounds > 1
                 });
             }
 
@@ -443,22 +446,48 @@ module.exports = function (io){
         }
     }
 
-    function sendRoomData(room){
+    function sendRoomData(room, v2){
+        if(v2){
+            io.to(room.id).emit('matchFound', {
+            roomId: room.id,
+            round: room.round,
+            grid: room.grid,
+            players: Object.values(room.players).map(p => ({
+                id: p.id,
+                x: p.x,
+                y: p.y,
+                alive: p.alive,
+                bot: p.bot,
+                username: p.username
+            })),
+            items: room.items.map(i => ({ id: i.id, x: i.x, y: i.y, type: i.type })),
+            bombs: room.bombs.map(b => ({ x: b.bombX, y: b.bombY, explodeAt: b.explodeAt })),
+            respawn: room.allowRespawn,
+            showRounds: room.rounds > 1
+        });
+
+        return;
+        }
+
+
+
         io.to(room.id).emit('roomData', {
-                roomId: room.id,
-                round: room.round,
-                grid: room.grid,
-                players: Object.values(room.players).map(p => ({
-                    id: p.id,
-                    x: p.x,
-                    y: p.y,
-                    alive: p.alive,
-                    bot: p.bot,
-                    username: p.username
-                })),
-                items: room.items.map(i => ({ id: i.id, x: i.x, y: i.y, type: i.type })),
-                bombs: room.bombs.map(b => ({ x: b.bombX, y: b.bombY, explodeAt: b.explodeAt }))
-            });
+            roomId: room.id,
+            round: room.round,
+            grid: room.grid,
+            players: Object.values(room.players).map(p => ({
+                id: p.id,
+                x: p.x,
+                y: p.y,
+                alive: p.alive,
+                bot: p.bot,
+                username: p.username
+            })),
+            items: room.items.map(i => ({ id: i.id, x: i.x, y: i.y, type: i.type })),
+            bombs: room.bombs.map(b => ({ x: b.bombX, y: b.bombY, explodeAt: b.explodeAt })),
+            respawn: room.allowRespawn,
+            showRounds: room.rounds > 1
+        });
     }
 
     function checkForWinner(room) {
@@ -484,6 +513,20 @@ module.exports = function (io){
             return;
         }
 
+        // било е последен рунд
+        if(room.round == room.rounds){
+            for (const id in room.players) {
+                const s = io.sockets.sockets.get(id);
+                if (s) {
+                    s.leave(room.id);
+                    s.emit('gameEnded');
+                }
+            }
+            gameRooms.removeRoom(room.id);
+
+            return;
+        }
+
         room.round++;
         io.to(room.id).emit('roundEnded', {
             round: room.round,
@@ -494,24 +537,8 @@ module.exports = function (io){
         gameRooms.nextRound(room.id);
 
         setTimeout(() => {
-            io.to(room.id).emit('roomData', {
-                roomId: room.id,
-                round: room.round,
-                grid: room.grid,
-                players: Object.values(room.players).map(p => ({
-                    id: p.id,
-                    x: p.x,
-                    y: p.y,
-                    alive: p.alive,
-                    bot: p.bot,
-                    username: p.username
-                })),
-                items: room.items.map(i => ({ id: i.id, x: i.x, y: i.y, type: i.type })),
-                bombs: room.bombs.map(b => ({ x: b.bombX, y: b.bombY, explodeAt: b.explodeAt }))
-            });
+            sendRoomData(room);
         }, 3000);
-
-
     }
 
 
