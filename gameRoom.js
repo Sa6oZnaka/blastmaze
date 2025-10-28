@@ -51,7 +51,8 @@ module.exports = function (io){
                 y: posY,
                 bot: false,
                 username: socket.handshake.session.user.username,
-                alive: true
+                alive: true,
+                rounds: 0
             };
 
             gameRooms.addPlayerToRoom(room, player);
@@ -501,6 +502,7 @@ module.exports = function (io){
         // Ако остане само един жив -> печели
         if (alivePlayers.length === 1) {
             winner = alivePlayers[0];
+            alivePlayers[0].rounds++;
         }
 
         // Ако няма живи -> равенство
@@ -513,19 +515,42 @@ module.exports = function (io){
             return;
         }
 
-        // било е последен рунд
-        if(room.round == room.rounds){
-            for (const id in room.players) {
-                const s = io.sockets.sockets.get(id);
-                if (s) {
-                    s.leave(room.id);
-                    s.emit('gameEnded');
-                }
-            }
-            gameRooms.removeRoom(room.id);
+       // === КРАЙ НА ИГРАТА (след последния рунд) ===
+        if (room.round === room.rounds) {
+            const playersArr = Object.values(room.players);
 
+            // победителя
+            const maxRounds = Math.max(...playersArr.map(p => p.rounds || 0));
+
+            const topPlayers = playersArr.filter(p => (p.rounds || 0) === maxRounds && !p.bot);
+
+            let finalWinner = null;
+            let draw = false;
+
+            if (topPlayers.length === 1) {
+                finalWinner = topPlayers[0];
+            } else {
+                draw = true;
+            }
+
+            const finalPlayers = playersArr.map(p => ({
+                id: p.id,
+                username: p.username,
+                rounds: p.rounds || 0
+            }));
+
+            io.to(room.id).emit('gameEnded', {
+                players: finalPlayers,
+                winner: finalWinner
+                    ? { id: finalWinner.id, username: finalWinner.username }
+                    : null,
+                draw
+            });
+
+            gameRooms.removeRoom(room.id);
             return;
         }
+
 
         room.round++;
         io.to(room.id).emit('roundEnded', {

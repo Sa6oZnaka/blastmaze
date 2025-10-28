@@ -32,6 +32,10 @@ let wins = 0;
 let showRounds = false;
 let showRespawnMenu = false;
 
+let playerXP = 0;
+let playerLevel = 1;
+let xpToNextLevel = 100;
+
 import socket from './socket.js';
 
 socket.on('playerJoined', (data) => {
@@ -167,8 +171,7 @@ socket.on('gameEnded', (data) => {
         console.log("GAME ENDED");
         canMove = false;
 
-        gameSceneRef.scene.stop('GameScene');
-        gameSceneRef.scene.start('MenuScene');
+        showMatchResults(data);
     });
 });
 
@@ -874,6 +877,170 @@ function safeEvent(callback) {
     } else {
         eventQueue.push(callback);
     }
+}
+
+function showMatchResults(data) {
+    const { winner, scores } = data;
+
+    const bg = gameSceneRef.add.rectangle(
+        gameSceneRef.cameras.main.centerX,
+        gameSceneRef.cameras.main.centerY,
+        gameSceneRef.cameras.main.width,
+        gameSceneRef.cameras.main.height,
+        0x000000,
+        0.5
+    ).setScrollFactor(0).setDepth(999);
+
+    const title = gameSceneRef.add.text(
+        gameSceneRef.cameras.main.centerX,
+        gameSceneRef.cameras.main.centerY - 180,
+        'RESULTS 🏁',
+        { font: '48px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 6 }
+    ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+
+    const winnerText = gameSceneRef.add.text(
+        gameSceneRef.cameras.main.centerX,
+        gameSceneRef.cameras.main.centerY - 80,
+        winner ? `Winner: ${winner.username}` : 'Draw!',
+        { font: '36px Arial', fill: '#00ff00', stroke: '#000', strokeThickness: 4 }
+    ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+
+    const gainedXP = winner && winner.id === socket.id ? 320 : 90;
+    const oldXP = playerXP;
+    const newXP = playerXP + gainedXP;
+
+    const barWidth = 400;
+    const barHeight = 30;
+    const barX = gameSceneRef.cameras.main.centerX - barWidth / 2;
+    const barY = gameSceneRef.cameras.main.centerY + 20;
+
+    const barBg = gameSceneRef.add.rectangle(
+        barX + barWidth / 2, barY, barWidth, barHeight, 0x444444
+    ).setScrollFactor(0).setDepth(1000);
+
+    const barFill = gameSceneRef.add.rectangle(
+        barX, barY, (oldXP / xpToNextLevel) * barWidth, barHeight, 0x00ff88
+    ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(1001);
+
+    const levelText = gameSceneRef.add.text(
+        gameSceneRef.cameras.main.centerX,
+        barY - 40,
+        `Level ${playerLevel}`,
+        { font: '28px Arial', fill: '#ffffff' }
+    ).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
+
+    const xpText = gameSceneRef.add.text(
+        gameSceneRef.cameras.main.centerX,
+        barY + 40,
+        `XP: ${oldXP} / ${xpToNextLevel}`,
+        { font: '22px Arial', fill: '#ffffff' }
+    ).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
+
+    animateXP(oldXP, newXP);
+
+    function animateXP(currentXP, targetXP) {
+        const currentLevel = playerLevel;
+
+        const totalNeeded = xpToNextLevel - currentXP;
+        if (targetXP >= xpToNextLevel) {
+            gameSceneRef.tweens.addCounter({
+                from: currentXP,
+                to: xpToNextLevel,
+                duration: 1200,
+                ease: 'Cubic.easeOut',
+                onUpdate: (tween) => {
+                    const value = tween.getValue();
+                    barFill.width = (value / xpToNextLevel) * barWidth;
+                    xpText.setText(`XP: ${Math.floor(value)} / ${xpToNextLevel}`);
+                },
+                onComplete: () => {
+                    showLevelUpEffect();
+                    playerLevel++;
+                    levelText.setText(`Level ${playerLevel}`);
+
+                    const leftover = targetXP - xpToNextLevel;
+                    playerXP = 0;
+
+                    barFill.width = 0;
+                    xpText.setText(`XP: 0 / ${xpToNextLevel}`);
+
+                    if (leftover > 0) {
+                        animateXP(0, leftover);
+                    } else {
+                        playerXP = leftover;
+                    }
+                }
+            });
+        } else {
+            gameSceneRef.tweens.addCounter({
+                from: currentXP,
+                to: targetXP,
+                duration: 1200,
+                ease: 'Cubic.easeOut',
+                onUpdate: (tween) => {
+                    const value = tween.getValue();
+                    barFill.width = (value / xpToNextLevel) * barWidth;
+                    xpText.setText(`XP: ${Math.floor(value)} / ${xpToNextLevel}`);
+                },
+                onComplete: () => {
+                    playerXP = targetXP;
+                }
+            });
+        }
+    }
+
+    const contBtn = gameSceneRef.add.text(
+        gameSceneRef.cameras.main.centerX,
+        gameSceneRef.cameras.main.centerY + 150,
+        'Continue',
+        {
+            font: '28px Arial',
+            fill: '#ffffff',
+            backgroundColor: '#1e1e1e',
+            padding: { x: 20, y: 10 }
+        }
+    )
+    .setOrigin(0.5)
+    .setScrollFactor(0)
+    .setDepth(1001)
+    .setInteractive({ useHandCursor: true })
+    .on('pointerdown', () => {
+        bg.destroy();
+        title.destroy();
+        winnerText.destroy();
+        barBg.destroy();
+        barFill.destroy();
+        levelText.destroy();
+        xpText.destroy();
+        contBtn.destroy();
+
+        gameSceneRef.scene.stop('GameScene');
+        gameSceneRef.scene.start('MenuScene');
+        window.location.reload();
+    });
+}
+
+function showLevelUpEffect() {
+    const text = gameSceneRef.add.text(
+        gameSceneRef.cameras.main.centerX,
+        gameSceneRef.cameras.main.centerY - 20,
+        'LEVEL UP! 🎉',
+        {
+            font: '56px Arial',
+            fill: '#ffdd00',
+            stroke: '#000',
+            strokeThickness: 6
+        }
+    ).setOrigin(0.5).setScrollFactor(0).setDepth(1500);
+
+    gameSceneRef.tweens.add({
+        targets: text,
+        scale: { from: 1, to: 1.4 },
+        alpha: { from: 1, to: 0 },
+        duration: 1500,
+        ease: 'Cubic.easeOut',
+        onComplete: () => text.destroy()
+    });
 }
 
 socket.on('bombPlaced', ({ id, x, y }) => {
