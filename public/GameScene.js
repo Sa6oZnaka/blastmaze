@@ -25,6 +25,7 @@ let gameSceneRef = null;
 let bombPrevew = false;
 
 let respawnButton;
+let mainMenuButton;
 let deadText;
 let resultText;
 let wins = 0;
@@ -77,6 +78,7 @@ socket.on('playerDied', ({ id }) => {
         if(id == socket.id && showRespawnMenu){
             deadText.setVisible(true);
             respawnButton.setVisible(true);
+            mainMenuButton.setVisible(true);
 
             bombPrevew = false;
             canMove = false;
@@ -109,6 +111,7 @@ socket.on('playerRespawned', (data) => {
 
             deadText.setVisible(false);
             respawnButton.setVisible(false);
+            mainMenuButton.setVisible(false);
 
             updateVisibleBlocks.call();
         }
@@ -204,20 +207,6 @@ export default class GameScene extends Phaser.Scene {
     }
 
     preload() {
-
-        this.load.image('block', './assets/block.png');
-        this.load.image('block2', './assets/block2.png');
-        this.load.spritesheet('bomb', 'assets/bomb.png', {
-            frameWidth: 90, 
-            frameHeight: 90
-        });
-
-        this.load.spritesheet('player', 'assets/marto.png', {
-            frameWidth: 124,
-            frameHeight: 124
-        });
-
-
         // Light gradeint
         const size = TILE_SIZE * 7;
         const rt = this.textures.createCanvas('lightGradient', size, size);
@@ -402,6 +391,30 @@ export default class GameScene extends Phaser.Scene {
             }
         });
         respawnButton.setVisible(false);
+
+        // --- Main Menu Button ---
+        mainMenuButton = this.add.text(
+            this.cameras.main.centerX,
+            this.cameras.main.centerY + 160,
+            'Main Menu', {
+                fontFamily: 'Arial',
+                fontSize: '28px',
+                fontStyle: 'bold',
+                color: '#ffffff',
+                backgroundColor: '#1e1e1e',
+                padding: { x: 20, y: 10 },
+                align: 'center'
+            })
+            .setOrigin(0.5)
+            .setScrollFactor(0)
+            .setDepth(300)
+            .setInteractive({ useHandCursor: true })
+            .on('pointerdown', () => {
+                gameSceneRef.scene.stop('GameScene');
+                gameSceneRef.scene.start('MenuScene');
+                window.location.reload();
+            });
+        mainMenuButton.setVisible(false);
 
         deadText = this.add.text(
             this.cameras.main.centerX, 
@@ -789,6 +802,7 @@ function resetGameScene(roomData) {
 
     deadText.setVisible(false);
     respawnButton.setVisible(false);
+    mainMenuButton.setVisible(false);
 
     if (roomData.players) {
         for (const id in roomData.players) {
