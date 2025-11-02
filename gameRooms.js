@@ -189,7 +189,7 @@ function collectExplosion(roomId, bx, by, aff = new Set()) {
     let bombs = rooms[roomId].bombs;
     let BOMB_RADIUS = 4;
     let DROP_ENABLED = true;   // true за шанс за предмет
-    let DROP_CHANCE = 0.93;    // 3% шанс
+    let DROP_CHANCE = 0.03;    // 3% шанс
     const spawnedItems = [];
 
     const idx = bombs.findIndex(b => b.bombX === bx && b.bombY === by);
@@ -211,7 +211,7 @@ function collectExplosion(roomId, bx, by, aff = new Set()) {
                 aff.add(`${nx},${ny}`); 
 
                 if (DROP_ENABLED && Math.random() < DROP_CHANCE) {
-                    const type = Math.random() < 0.5 ? "bomb" : "armor";
+                    const type = Math.random() < 1 ? "bomb" : "armor";
                     const id = "item" + (itemIdCounter++);
                     const item = { id, x: nx, y: ny, type };
                     rooms[roomId].items.push(item);
