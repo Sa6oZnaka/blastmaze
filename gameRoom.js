@@ -3,16 +3,6 @@ const db = require('./dbInit'); // или пътя, където ти е db фа
 
 module.exports = function (io){
 
-
-    const items = []; // { id, x, y, type }
-    let itemIdCounter = 0;
-
-
-    // SETTINGS //
-    let BOT_ENABLED = true;
-    let PEACEFUL_BOTS = true;
-    let DROP_ENABLED = true;
-    let DROP_CHANCE = 0.02;
     let BOMB_CLIPPING = true;
 
     io.use((socket, next) => {
@@ -612,24 +602,18 @@ module.exports = function (io){
     function explodeBomb(roomId, bx, by) {
         if(!gameRooms.hasBomb(roomId, bx, by)) return;
 
-        const aff = gameRooms.collectExplosion(roomId, bx, by);
-        const arr = [...aff].map(s => {
+        const { affectedCells, spawnedItems } = gameRooms.collectExplosion(roomId, bx, by);
+
+        const arr = [...affectedCells].map(s => {
             const [x, y] = s.split(',').map(Number);
             return { x, y };
         });
+
+        spawnedItems.forEach(item => {
+            io.to(roomId).emit('itemSpawned', item);
+        });
+
         io.emit('bombExploded', { x: bx, y: by, affected: arr });
-        checkPlayersInExplosion(roomId, aff);
+        checkPlayersInExplosion(roomId, affectedCells);
     }
-
-    function spawnItem(x, y) {
-        if (grid[y][x] !== 0) return;
-
-        const type = Math.random() < 1 ? "bomb" : "armor";// only bomb
-        const id = "item" + (itemIdCounter++);
-        const item = { id, x, y, type };
-        items.push(item);
-
-        io.emit('itemSpawned', item);
-    }
-
 }

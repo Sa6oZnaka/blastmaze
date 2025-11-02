@@ -188,36 +188,49 @@ function collectExplosion(roomId, bx, by, aff = new Set()) {
     let grid = rooms[roomId].grid;
     let bombs = rooms[roomId].bombs;
     let BOMB_RADIUS = 4;
-    let DROP_ENABLED = false;
+    let DROP_ENABLED = true;   // true за шанс за предмет
+    let DROP_CHANCE = 0.93;    // 3% шанс
+    const spawnedItems = [];
 
-        const idx = bombs.findIndex(b => b.bombX === bx && b.bombY === by);
-        if (idx !== -1) { clearTimeout(bombs[idx].timer); bombs.splice(idx, 1); }
-        aff.add(`${bx},${by}`);
-        grid[by][bx] = 0;
-        for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
-            for (let s = 1; s <= BOMB_RADIUS; s++) {
-                const nx = bx + dx * s, ny = by + dy * s;
-                if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) break;
-                if (grid[ny][nx] === 1) { 
-                    grid[ny][nx] = 0; 
-                    aff.add(`${nx},${ny}`); 
+    const idx = bombs.findIndex(b => b.bombX === bx && b.bombY === by);
+    if (idx !== -1) { 
+        clearTimeout(bombs[idx].timer); 
+        bombs.splice(idx, 1); 
+    }
 
-                    if(DROP_ENABLED){
-                        if (Math.random() < DROP_CHANCE) {
-                            //spawnItem(nx, ny);
-                        }
-                    }
-                    
-                    break; 
+    aff.add(`${bx},${by}`);
+    grid[by][bx] = 0;
+
+    for (const { dx, dy } of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]) {
+        for (let s = 1; s <= BOMB_RADIUS; s++) {
+            const nx = bx + dx * s, ny = by + dy * s;
+            if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length) break;
+
+            if (grid[ny][nx] === 1) { 
+                grid[ny][nx] = 0; 
+                aff.add(`${nx},${ny}`); 
+
+                if (DROP_ENABLED && Math.random() < DROP_CHANCE) {
+                    const type = Math.random() < 0.5 ? "bomb" : "armor";
+                    const id = "item" + (itemIdCounter++);
+                    const item = { id, x: nx, y: ny, type };
+                    rooms[roomId].items.push(item);
+                    spawnedItems.push(item);
                 }
-                else if (grid[ny][nx] === 0) aff.add(`${nx},${ny}`);
-                else break;
-            }
+                
+                break; 
+            } else if (grid[ny][nx] === 0) aff.add(`${nx},${ny}`);
+            else break;
         }
-        const chain = bombs.filter(b => aff.has(`${b.bombX},${b.bombY}`));
-        chain.forEach(b => { clearTimeout(b.timer); collectExplosion(roomId, b.bombX, b.bombY, aff); });
-        return aff;
+    }
+
+    // chain reaction
+    const chain = bombs.filter(b => aff.has(`${b.bombX},${b.bombY}`));
+    chain.forEach(b => { clearTimeout(b.timer); collectExplosion(roomId, b.bombX, b.bombY, aff); });
+
+    return { affectedCells: aff, spawnedItems };
 }
+
 
 function getAllRooms() {
     return Object.values(rooms);

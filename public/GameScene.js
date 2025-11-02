@@ -626,7 +626,7 @@ function tryMove(dx, dy) {
                 else
                     player.setFrame(1);
                 
-                //checkItemPickup();
+                checkItemPickup();
                 updateVisibleBlocks.call();
             }
         });
