@@ -66,13 +66,16 @@ module.exports = function (app, passport, connection, serverRooms) {
     });
 
     app.get('/getUser', isLoggedIn, function (req, res) {
+        let level = Math.floor(req.user.level_points / 100);
+        let points = req.user.level_points - level * 100;
+
         res.send(JSON.stringify({
             user: req.user.username,
-            level: req.user.level_points,
-            rank: req.user.rank_points,
+            level: level + 1,
+            xp: points,
+            maxXp: 100,
             wins: req.user.wins,
         }));
-        //serverRooms.addOnlineUser(req.cookies.io, req.user.username);
     });
 
     app.get('/getUserID', isLoggedIn, function (req, res) {

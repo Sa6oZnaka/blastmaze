@@ -1,4 +1,5 @@
 const gameRooms = require('./gameRooms');
+const db = require('./dbInit'); // или пътя, където ти е db файла
 
 module.exports = function (io){
 
@@ -499,59 +500,101 @@ module.exports = function (io){
         let winner = null;
         let draw = false;
 
-        // Ако остане само един жив -> печели
         if (alivePlayers.length === 1) {
             winner = alivePlayers[0];
-            alivePlayers[0].rounds++;
-        }
-
-        // Ако няма живи -> равенство
-        else if (alivePlayers.length === 0) {
+            winner.rounds = (winner.rounds || 0) + 1;
+        } else if (alivePlayers.length === 0) {
             draw = true;
+        } else {
+            return; // още не е свършил рунда
         }
 
-        // Ако още има повече от един жив, продължаваме
-        else {
-            return;
-        }
+        const playersArr = Object.values(players);
+        const majorityWins = Math.ceil(room.rounds / 2);
+        const potentialWinner = playersArr.find(p => (p.rounds || 0) >= majorityWins && !p.bot);
 
-       // === КРАЙ НА ИГРАТА (след последния рунд) ===
-        if (room.round === room.rounds) {
-            const playersArr = Object.values(room.players);
+        const isFinal = room.round === room.rounds || !!potentialWinner;
 
-            // победителя
+        if (isFinal) {
             const maxRounds = Math.max(...playersArr.map(p => p.rounds || 0));
-
             const topPlayers = playersArr.filter(p => (p.rounds || 0) === maxRounds && !p.bot);
 
             let finalWinner = null;
-            let draw = false;
+            let finalDraw = false;
 
             if (topPlayers.length === 1) {
                 finalWinner = topPlayers[0];
             } else {
-                draw = true;
+                finalDraw = true;
             }
 
-            const finalPlayers = playersArr.map(p => ({
-                id: p.id,
-                username: p.username,
-                rounds: p.rounds || 0
-            }));
+            const usernames = playersArr.map(p => p.username).filter(Boolean);
 
-            io.to(room.id).emit('gameEnded', {
-                players: finalPlayers,
-                winner: finalWinner
-                    ? { id: finalWinner.id, username: finalWinner.username }
-                    : null,
-                draw
-            });
+            db.query(
+                'SELECT username, level_points, rank_points, wins FROM user WHERE username IN (?)',
+                [usernames],
+                (err, results) => {
+                    if (err) {
+                        console.error('DB select error:', err);
+                        return;
+                    }
 
-            gameRooms.removeRoom(room.id);
+                    const finalPlayers = playersArr.map(p => {
+                        const user = results.find(r => r.username === p.username);
+
+                        const baseXP = (p.rounds || 0) * 10;
+                        const bonusXP = (finalWinner && finalWinner.username === p.username) ? 50 : 0;
+                        const gainedXP = baseXP + bonusXP;
+                        const gainedRank = gainedXP * 0.3;
+                        const gainedWins = (finalWinner && finalWinner.username === p.username) ? 1 : 0;
+
+                        const oldXP = user ? user.level_points : 0;
+                        const oldRank = user ? user.rank_points : 0;
+                        const oldWins = user ? user.wins : 0;
+
+                        const newXP = oldXP + gainedXP;
+                        const newRank = oldRank + gainedRank;
+                        const newWins = oldWins + gainedWins;
+
+                        db.query(
+                            'UPDATE user SET level_points = ?, rank_points = ?, wins = ? WHERE username = ?',
+                            [newXP, newRank, newWins, p.username],
+                            (err2) => {
+                                if (err2) console.error('DB update error:', err2);
+                            }
+                        );
+
+                        return {
+                            id: p.id,
+                            username: p.username,
+                            rounds: p.rounds || 0,
+                            gainedXP,
+                            gainedRank,
+                            oldXP,
+                            newXP,
+                            oldRank,
+                            newRank,
+                            oldWins,
+                            newWins
+                        };
+                    });
+
+                    io.to(room.id).emit('gameEnded', {
+                        players: finalPlayers,
+                        winner: finalWinner
+                            ? { id: finalWinner.id, username: finalWinner.username }
+                            : null,
+                        draw: finalDraw
+                    });
+
+                    gameRooms.removeRoom(room.id);
+                }
+            );
+
             return;
         }
 
-
+        // === Ако играта продължава ===
         room.round++;
         io.to(room.id).emit('roundEnded', {
             round: room.round,
@@ -565,7 +608,6 @@ module.exports = function (io){
             sendRoomData(room);
         }, 3000);
     }
-
 
     function explodeBomb(roomId, bx, by) {
         if(!gameRooms.hasBomb(roomId, bx, by)) return;

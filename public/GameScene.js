@@ -880,7 +880,20 @@ function safeEvent(callback) {
 }
 
 function showMatchResults(data) {
-    const { winner, scores } = data;
+    const { winner, players, draw } = data;
+
+    const myPlayer = players.find(p => p.id === socket.id);
+    if (!myPlayer) return;
+
+    const oldXP = Number(myPlayer.oldXP || 0);
+    const newXP = Number(myPlayer.newXP || oldXP);
+    const oldLevel = Number(myPlayer.oldLevel || Math.floor(oldXP / 100) + 1);
+    const newLevel = Number(myPlayer.newLevel || Math.floor(newXP / 100) + 1);
+    const xpToNextLevel = Number(myPlayer.xpToNextLevel || 100);
+
+    if (typeof window.playerXP === 'undefined') window.playerXP = oldXP;
+    if (typeof window.playerLevel === 'undefined') window.playerLevel = oldLevel;
+    if (typeof window.xpToNextLevel === 'undefined') window.xpToNextLevel = xpToNextLevel;
 
     const bg = gameSceneRef.add.rectangle(
         gameSceneRef.cameras.main.centerX,
@@ -888,7 +901,7 @@ function showMatchResults(data) {
         gameSceneRef.cameras.main.width,
         gameSceneRef.cameras.main.height,
         0x000000,
-        0.5
+        0.6
     ).setScrollFactor(0).setDepth(999);
 
     const title = gameSceneRef.add.text(
@@ -896,98 +909,98 @@ function showMatchResults(data) {
         gameSceneRef.cameras.main.centerY - 180,
         'RESULTS 🏁',
         { font: '48px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 6 }
-    ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+    ).setOrigin(0.5).setDepth(1000);
 
     const winnerText = gameSceneRef.add.text(
         gameSceneRef.cameras.main.centerX,
-        gameSceneRef.cameras.main.centerY - 80,
-        winner ? `Winner: ${winner.username}` : 'Draw!',
+        gameSceneRef.cameras.main.centerY - 100,
+        draw ? 'Draw!' : (winner ? `Winner: ${winner.username}` : 'Draw!'),
         { font: '36px Arial', fill: '#00ff00', stroke: '#000', strokeThickness: 4 }
-    ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+    ).setOrigin(0.5).setDepth(1000);
 
-    const gainedXP = winner && winner.id === socket.id ? 320 : 90;
-    const oldXP = playerXP;
-    const newXP = playerXP + gainedXP;
-
+    // --- XP bar layout ---
     const barWidth = 400;
     const barHeight = 30;
     const barX = gameSceneRef.cameras.main.centerX - barWidth / 2;
     const barY = gameSceneRef.cameras.main.centerY + 20;
 
-    const barBg = gameSceneRef.add.rectangle(
-        barX + barWidth / 2, barY, barWidth, barHeight, 0x444444
-    ).setScrollFactor(0).setDepth(1000);
+    const barBg = gameSceneRef.add.rectangle(barX + barWidth / 2, barY, barWidth, barHeight, 0x333333)
+        .setScrollFactor(0).setDepth(1000);
 
-    const barFill = gameSceneRef.add.rectangle(
-        barX, barY, (oldXP / xpToNextLevel) * barWidth, barHeight, 0x00ff88
-    ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(1001);
+    const oldXPInLevel = oldXP % xpToNextLevel;
+    const newXPInLevel = newXP % xpToNextLevel;
+
+    const barFill = gameSceneRef.add.rectangle(barX, barY, (oldXPInLevel / xpToNextLevel) * barWidth, barHeight, 0x00ff88)
+        .setOrigin(0, 0.5).setDepth(1001).setScrollFactor(0);
 
     const levelText = gameSceneRef.add.text(
-        gameSceneRef.cameras.main.centerX,
-        barY - 40,
-        `Level ${playerLevel}`,
+        gameSceneRef.cameras.main.centerX, barY - 40,
+        `Level ${oldLevel}`,
         { font: '28px Arial', fill: '#ffffff' }
-    ).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
+    ).setOrigin(0.5).setDepth(1001).setScrollFactor(0);
 
     const xpText = gameSceneRef.add.text(
-        gameSceneRef.cameras.main.centerX,
-        barY + 40,
-        `XP: ${oldXP} / ${xpToNextLevel}`,
+        gameSceneRef.cameras.main.centerX, barY + 40,
+        `XP: ${oldXPInLevel} / ${xpToNextLevel} (+${newXP - oldXP})`,
         { font: '22px Arial', fill: '#ffffff' }
-    ).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
+    ).setOrigin(0.5).setDepth(1001).setScrollFactor(0);
 
-    animateXP(oldXP, newXP);
+    const gainedText = gameSceneRef.add.text(
+        gameSceneRef.cameras.main.centerX,
+        gameSceneRef.cameras.main.centerY + 90,
+        `+${newXP - oldXP} XP`,
+        { font: '26px Arial', fill: '#ffff00', stroke: '#000', strokeThickness: 3 }
+    ).setOrigin(0.5).setDepth(1001).setScrollFactor(0);
 
-    function animateXP(currentXP, targetXP) {
-        const currentLevel = playerLevel;
+    function animateXP(currentTotalXP, targetTotalXP, currentLevel, targetLevel) {
+        const curInLevel = currentTotalXP % xpToNextLevel;
+        const targInLevel = (currentLevel === targetLevel)
+            ? (targetTotalXP % xpToNextLevel)
+            : xpToNextLevel;
 
-        const totalNeeded = xpToNextLevel - currentXP;
-        if (targetXP >= xpToNextLevel) {
-            gameSceneRef.tweens.addCounter({
-                from: currentXP,
-                to: xpToNextLevel,
-                duration: 1200,
-                ease: 'Cubic.easeOut',
-                onUpdate: (tween) => {
-                    const value = tween.getValue();
-                    barFill.width = (value / xpToNextLevel) * barWidth;
-                    xpText.setText(`XP: ${Math.floor(value)} / ${xpToNextLevel}`);
-                },
-                onComplete: () => {
-                    showLevelUpEffect();
-                    playerLevel++;
-                    levelText.setText(`Level ${playerLevel}`);
+        const delta = Math.max(1, Math.abs(targInLevel - curInLevel));
+        const duration = Math.min(1800, 300 + delta * 6);
 
-                    const leftover = targetXP - xpToNextLevel;
-                    playerXP = 0;
+        gameSceneRef.tweens.addCounter({
+            from: curInLevel,
+            to: targInLevel,
+            duration,
+            ease: 'Cubic.easeOut',
+            onUpdate: (tween) => {
+                const v = tween.getValue();
+                barFill.width = (v / xpToNextLevel) * barWidth;
+                xpText.setText(`XP: ${Math.floor(v)} / ${xpToNextLevel} (+${targetTotalXP - oldXP})`);
+            },
+            onComplete: () => {
+                if (targInLevel === xpToNextLevel && targetLevel > currentLevel) {
+                    if (typeof showLevelUpEffect === 'function') showLevelUpEffect();
+
+                    levelText.setText(`Level ${currentLevel + 1}`);
 
                     barFill.width = 0;
-                    xpText.setText(`XP: 0 / ${xpToNextLevel}`);
 
-                    if (leftover > 0) {
-                        animateXP(0, leftover);
-                    } else {
-                        playerXP = leftover;
-                    }
+                    gameSceneRef.time.delayedCall(350, () => {
+                        const nextCurrentTotal = (currentLevel + 1) * xpToNextLevel;
+                        const nextCurrentLevel = currentLevel + 1;
+                        if (targetLevel > nextCurrentLevel) {
+                            animateXP(nextCurrentTotal, targetTotalXP, nextCurrentLevel, targetLevel);
+                        } else {
+                            animateXP(nextCurrentTotal, targetTotalXP, nextCurrentLevel, targetLevel);
+                        }
+                    });
+                } else {
+                    window.playerXP = targetTotalXP;
+                    window.playerLevel = targetLevel;
+
+                    const finalInLevel = targetTotalXP % xpToNextLevel;
+                    barFill.width = (finalInLevel / xpToNextLevel) * barWidth;
+                    xpText.setText(`XP: ${finalInLevel} / ${xpToNextLevel} (+${targetTotalXP - oldXP})`);
                 }
-            });
-        } else {
-            gameSceneRef.tweens.addCounter({
-                from: currentXP,
-                to: targetXP,
-                duration: 1200,
-                ease: 'Cubic.easeOut',
-                onUpdate: (tween) => {
-                    const value = tween.getValue();
-                    barFill.width = (value / xpToNextLevel) * barWidth;
-                    xpText.setText(`XP: ${Math.floor(value)} / ${xpToNextLevel}`);
-                },
-                onComplete: () => {
-                    playerXP = targetXP;
-                }
-            });
-        }
+            }
+        });
     }
+
+    animateXP(oldXP, newXP, oldLevel, newLevel);
 
     const contBtn = gameSceneRef.add.text(
         gameSceneRef.cameras.main.centerX,
@@ -1000,24 +1013,21 @@ function showMatchResults(data) {
             padding: { x: 20, y: 10 }
         }
     )
-    .setOrigin(0.5)
-    .setScrollFactor(0)
-    .setDepth(1001)
-    .setInteractive({ useHandCursor: true })
-    .on('pointerdown', () => {
-        bg.destroy();
-        title.destroy();
-        winnerText.destroy();
-        barBg.destroy();
-        barFill.destroy();
-        levelText.destroy();
-        xpText.destroy();
-        contBtn.destroy();
+        .setOrigin(0.5)
+        .setDepth(1001)
+        .setScrollFactor(0)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => {
+            [bg, title, winnerText, barBg, barFill, levelText, xpText, gainedText, contBtn].forEach(e => {
+                if (e && e.destroy) e.destroy();
+            });
+            window.playerXP = newXP;
+            window.playerLevel = newLevel;
 
-        gameSceneRef.scene.stop('GameScene');
-        gameSceneRef.scene.start('MenuScene');
-        window.location.reload();
-    });
+            gameSceneRef.scene.stop('GameScene');
+            gameSceneRef.scene.start('MenuScene');
+            window.location.reload();
+        });
 }
 
 function showLevelUpEffect() {

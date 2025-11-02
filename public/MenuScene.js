@@ -190,9 +190,9 @@ export default class MenuScene extends Phaser.Scene {
                 const data = JSON.parse(http.responseText);
                 const username = data.user || 'Player';
                 const level = data.level || 1;
-                const xp = data.xp || 50;
+                const xp = data.xp || 0;
                 const maxXp = data.maxXp || 100;
-
+                
                 this.usernameText.setText(`👤 ${username}`);
                 this.levelText.setText(`Lvl ${level}`);
                 this.tweens.add({
