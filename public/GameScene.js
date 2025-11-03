@@ -351,19 +351,9 @@ export default class GameScene extends Phaser.Scene {
 
         updateVisibleBlocks();
 
-
         /// UI
         const hudY = 8;
         const hudFont = { font: '20px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 3 };
-
-        this.roundBar = this.add.rectangle(
-            this.cameras.main.centerX,
-            hudY + 0,
-            this.cameras.main.width,
-            28,
-            0x000000,
-            0.1 // по-лека прозрачност
-        ).setOrigin(0.5, 0).setScrollFactor(0).setDepth(200);
 
         this.roundCenterText = this.add.text(
             this.cameras.main.centerX,
@@ -672,6 +662,7 @@ socket.on('roundEnded', ({ round, winner, draw, scores, totalRounds }) => {
         canMove = false;
 
         let msg = "";
+        let iWon = false;
 
         if (draw) {
             msg = "🤝 Draw!";
@@ -680,6 +671,7 @@ socket.on('roundEnded', ({ round, winner, draw, scores, totalRounds }) => {
             if(winner.id == socket.id){
                 msg = `Winner!`;
                 wins ++;
+                iWon = true;
             }else{
                 msg = `Loser!`;
             }
@@ -691,7 +683,11 @@ socket.on('roundEnded', ({ round, winner, draw, scores, totalRounds }) => {
             msg,
             {
                 font: '48px Arial',
-                fill: draw ? '#ffff00' : '#00ff00',
+                fill: draw 
+                    ? '#e2c431ff' 
+                    : iWon 
+                        ? '#149a14ff' 
+                        : '#c90f0fff',
                 stroke: '#000',
                 strokeThickness: 6
             }
