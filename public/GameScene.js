@@ -921,12 +921,18 @@ function showMatchResults(data) {
         { font: '48px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 6 }
     ).setOrigin(0.5).setDepth(1000);
 
+    title.x = gameSceneRef.cameras.main.midPoint.x;
+    title.y = gameSceneRef.cameras.main.midPoint.y - 180;
+
     const winnerText = gameSceneRef.add.text(
         gameSceneRef.cameras.main.centerX,
         gameSceneRef.cameras.main.centerY - 100,
         draw ? 'Draw!' : (winner ? `Winner: ${winner.username}` : 'Draw!'),
         { font: '36px Arial', fill: '#00ff00', stroke: '#000', strokeThickness: 4 }
     ).setOrigin(0.5).setDepth(1000);
+
+    winnerText.x = gameSceneRef.cameras.main.midPoint.x;
+    winnerText.y = gameSceneRef.cameras.main.midPoint.y - 100;
 
     // --- XP bar layout ---
     const barWidth = 400;
