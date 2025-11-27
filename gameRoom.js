@@ -106,14 +106,15 @@ module.exports = function (io){
         socket.on('respawn', () => {
             const room = gameRooms.findRoomByPlayer(socket.id);
             if (!room) return;
-
             if (!room.allowRespawn) return;
 
             const player = room.players[socket.id];
             if (!player) return;
 
-            player.y = Math.floor(Math.random() * room.grid[0].length);
-            player.y = Math.floor(Math.random() * room.grid.length);
+            const pos = getFreeSpawnPosition(room);
+
+            player.x = pos.x;
+            player.y = pos.y;
             player.alive = true;
 
             io.to(room.id).emit('playerRespawned', player);
@@ -234,20 +235,13 @@ module.exports = function (io){
                 const target = findNearestPlayer(room, p);
                 if (!target) continue;
 
-                // ако е много близо — опитваме да сложим бомба
-                const dist = Math.abs(p.x - target.x) + Math.abs(p.y - target.y);
-                // условияхe: ако е на съседна или на две клетки — може да опита да сложи
-                if (dist <= 2) {
-                    // допълнителна безопасност: не слагай ако собственото място вече е опасно и няма escape path
+                if (canBombHitTarget(room, p, target, 3)) {
                     if (canBotPlaceBomb(room, p)) {
-                        // Ако ботът би се самоубил (няма път за бягство), може да се отказваме — но тук ще опитаме да намерим път
                         const potentialEscape = findSafePath(room, p.x, p.y);
                         if (potentialEscape) {
                             botPlaceBomb(room, p);
-                            // продължаваме към следващия бот (вече маркиран като escaping)
                             continue;
                         } else {
-                            // ако няма безопасен път, може да опитаме да преместим бота на съседна безопасна клетка, вместо да поставяме
                             const step = findAnySafeNeighbor(room, p.x, p.y);
                             if (step) {
                                 moveBot(room, p, step.x, step.y);
@@ -481,6 +475,44 @@ module.exports = function (io){
             showRounds: room.rounds > 1
         });
     }
+
+    function getFreeSpawnPosition(room) {
+        let x, y;
+        let tries = 0;
+
+        do {
+            x = Math.floor(Math.random() * room.grid[0].length);
+            y = Math.floor(Math.random() * room.grid.length);
+            tries++;
+        } while (isCellBlocked(room, x, y) && tries < 200);
+
+        return { x, y };
+    }
+
+    function canBombHitTarget(room, bot, target, range = 3) {
+        // column
+        if (bot.x === target.x) {
+            const dir = Math.sign(target.y - bot.y);
+            for (let i = 1; i <= range; i++) {
+                const y = bot.y + dir * i;
+                if (room.grid[y][bot.x] === 1) return false; // стена блокира
+                if (y === target.y) return true;
+            }
+        }
+
+        // row
+        if (bot.y === target.y) {
+            const dir = Math.sign(target.x - bot.x);
+            for (let i = 1; i <= range; i++) {
+                const x = bot.x + dir * i;
+                if (room.grid[bot.y][x] === 1) return false;
+                if (x === target.x) return true;
+            }
+        }
+
+        return false;
+    }
+
 
     function checkForWinner(room) {
         if (!room || room.allowRespawn) return;

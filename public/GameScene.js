@@ -462,7 +462,7 @@ function updateLighting() {
     this.lightGraphics.clear();
 
     this.raycaster.mapGameObjects(visibleBlocks.getChildren(), true);
-    this.ray.setOrigin(player.x, player.y);
+    this.ray.setOrigin(player.x + 1, player.y);
     const intersections = this.ray.castCircle();
 
     if (intersections.length > 0) {
